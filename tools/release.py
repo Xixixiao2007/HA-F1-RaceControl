@@ -126,6 +126,92 @@ def gh_download(url):
     return urllib.request.urlopen(req, timeout=180).read()
 
 
+def gh_download_via_api(token, asset_id):
+    """
+    用 **API 资产端点**取二进制。
+
+    `Accept: application/octet-stream` 时 `api.github.com` 直接吐文件内容，
+    走的还是 API 那条路 —— 而 `browser_download_url` 走 `github.com`，
+    本机实测过它不可达。
+    """
+    url = "%s/repos/%s/releases/assets/%d" % (API, REPO, asset_id)
+    last = None
+    for i in range(4):
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", "Bearer " + token)
+        req.add_header("Accept", "application/octet-stream")
+        req.add_header("User-Agent", "ha-f1-release")
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return r.read()
+        except Exception as e:          # 网络抖动就重试
+            last = e
+            time.sleep(2.0 * (i + 1))
+    raise last
+
+
+def verify_asset(token, asset, apk_sha, data):
+    """
+    复验「传上去的东西 == 我本地这一份」。
+
+    ## 为什么要有两条通道
+    `browser_download_url` 指向 **github.com** —— 和 `git push` 是同一条路，
+    实测它不可达（`WinError 10060` 超时）。那时候匿名下载会失败，
+    但**上传其实已经成功了**，白白让整个发布 exit 1、状态文件也没写成。
+
+    所以按这个顺序：
+      ① GitHub 服务端自己算的 `digest`（sha256）—— 这是服务端的结论，最硬；
+      ② 匿名下载（真实用户走的路，能过最好）；
+      ③ 不行就退回 API 资产端点。
+
+    ②③ 至少成立一条，再加上 ①，才算验证过。
+    「上传返回 201」本身**不算**验证。
+    """
+    want = len(data)
+    print()
+    print("  复验远端资产 ...")
+
+    # ① 服务端 digest
+    digest = asset.get("digest") or ""
+    if not digest:
+        st, got = gh_call(token, "GET",
+                          "/repos/%s/releases/assets/%d" % (REPO, asset["id"]))
+        digest = (got or {}).get("digest") or "" if st == 200 else ""
+    if digest.startswith("sha256:"):
+        d = digest.split(":", 1)[1]
+        if d != apk_sha:
+            raise SystemExit("  [FAIL] 服务端 digest 与本地不符：本地 %s / 服务端 %s"
+                             % (apk_sha, d))
+        print("     [OK] 服务端 digest 一致  %s" % d[:16])
+    else:
+        print("     [注意] 这条 API 没给 digest，只能靠下载复验")
+
+    # ② 匿名下载（真实用户走的路）
+    try:
+        got = gh_download(asset["browser_download_url"])
+        got_sha = hashlib.sha256(got).hexdigest()
+        if got_sha != apk_sha or len(got) != want:
+            raise SystemExit("  [FAIL] 匿名下载的内容与本地不一致！本地 %s / 远端 %s"
+                             % (apk_sha, got_sha))
+        print("     [OK] 匿名下载 %d 字节，SHA256 一致" % len(got))
+        return
+    except SystemExit:
+        raise
+    except Exception as e:
+        print("     [!] 匿名下载失败（github.com 不可达）：%s" % str(e)[:60])
+        print("         -> 退回 API 资产端点复验")
+
+    # ③ API 资产端点
+    got = gh_download_via_api(token, asset["id"])
+    got_sha = hashlib.sha256(got).hexdigest()
+    if got_sha != apk_sha or len(got) != want:
+        raise SystemExit("  [FAIL] API 下载的内容与本地不一致！本地 %s / 远端 %s"
+                         % (apk_sha, got_sha))
+    print("     [OK] 经 API 下载 %d 字节，SHA256 一致" % len(got))
+    print("     [注意] 本次没能做匿名下载复验（github.com 不通）——"
+          "文件本身已由服务端 digest + API 下载两路确认")
+
+
 # ----------------------------------------------------------------------
 # 版本与指纹
 # ----------------------------------------------------------------------
@@ -648,15 +734,8 @@ def main():
         raise SystemExit("  上传失败 HTTP %s: %s" % (st, res))
     print("     上传 %s (%d 字节)" % (os.path.basename(apk), len(data)))
 
-    # ---- 匿名下载复验 ----
-    print()
-    print("  匿名下载复验 ...")
-    got = gh_download(res["browser_download_url"])
-    got_sha = hashlib.sha256(got).hexdigest()
-    if got_sha != apk_sha or len(got) != len(data):
-        raise SystemExit("  [FAIL] 远端内容与本地不一致！本地 %s / 远端 %s"
-                         % (apk_sha, got_sha))
-    print("     [OK] 匿名下载 %d 字节，SHA256 一致" % len(got))
+    # ---- 复验（匿名下载 / 服务端 digest / API 端点，见 verify_asset 说明）----
+    verify_asset(token, res, apk_sha, data)
 
     with open(STATE, "w", encoding="utf-8") as f:
         json.dump({"versionCode": code, "versionName": name, "sourceHash": src_hash,
