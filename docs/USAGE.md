@@ -1,6 +1,6 @@
 # HA-F1-RaceControl —— 使用说明
 
-**交付物**：`HA-F1-RaceControl-v2.0.0.apk`（53 KB，versionCode 1 / versionName 2.0.0，
+**交付物**：`HA-F1-RaceControl-v2.0.2.apk`（56.7 KB，versionCode 3 / versionName 2.0.2，
 minSdk 23 / targetSdk 23，Android 6.0 及以上）
 
 桌面上显示的名字是 **F1 Race Control**。
@@ -36,7 +36,7 @@ HA 网页版 → 点左下角你的用户名 → **安全** 标签 → 拉到最
 
 ## 二、装 App
 
-1. 从 [Releases](../../releases) 下载 `HA-F1-RaceControl-v2.0.0.apk`
+1. 从 [Releases](../../releases) 下载 `HA-F1-RaceControl-v2.0.2.apk`
 2. 拷到手机（数据线 / 网盘 / `adb install` 都行）
 3. 手机上打开这个文件，系统会问「是否允许安装未知来源应用」，允许后安装
 
@@ -305,20 +305,26 @@ python tools/run_all_tests.py
 ```
 
 它会依次跑①单元测试 ②mock 服务器自测 ③端到端（真实客户端代码连假 HA，
-含真实数据回放和三个剧本），最后给一张汇总表。
+含真实数据回放和三个剧本）④发布工具对象重建自测，最后给一张汇总表。
 
 ---
 
 ## 九、校验值
 
 ```
-文件    HA-F1-RaceControl-v2.0.0.apk
-大小    53,974 字节 (52.7 KB)
+文件    HA-F1-RaceControl-v2.0.2.apk
+大小    58,070 字节 (56.7 KB)
 包名    com.haf1.racecontrol
-版本    versionCode 1 / versionName 2.0.0
+版本    versionCode 3 / versionName 2.0.2
 minSdk  23（Android 6.0）
 签名    v1 + v2 双方案
+SHA256  d8d37e5936198cc6e9f9f6dd667e62cf39478ee921bdf671d0f6ee33e044577a
 ```
+
+> 每一版都换新文件名、新版本号，**同一个版本号只会有一个 APK**。
+> 构建不是逐字节可复现的（同一份源码重新构建，SHA256 也会变），
+> 所以 `tools/release.py` 有两道闸：改了源码不升版本号 -> 拒绝；
+> 一个版本号已经发过、内容又不同 -> 拒绝。
 
 签名证书（后续版本必须保持一致，否则无法覆盖安装）：
 
