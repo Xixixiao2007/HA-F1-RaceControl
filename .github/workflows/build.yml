@@ -39,7 +39,7 @@ jobs:
         run: python3 tools/run_tests.py
 
       - name: Build APK
-        run: python3 tools/build_apk.py --out Android_HA_Viewer.apk
+        run: python3 tools/build_apk.py --out HA-F1-RaceControl.apk
         env:
           # runner 镜像预装了 Android SDK 并设了 ANDROID_SDK_ROOT，
           # 但里面没有 build-tools 30.0.3。这里显式指到刚下载的那一份，
@@ -47,11 +47,11 @@ jobs:
           HAF1_SDK: ${{ github.workspace }}/tools/android-sdk
 
       - name: Show APK info
-        run: ls -l Android_HA_Viewer.apk
+        run: ls -l HA-F1-RaceControl.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Android_HA_Viewer-apk
-          path: Android_HA_Viewer.apk
+          name: HA-F1-RaceControl-apk
+          path: HA-F1-RaceControl.apk
           if-no-files-found: error
