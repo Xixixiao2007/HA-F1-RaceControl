@@ -7,11 +7,17 @@
 
   targetSdk 保持 23：这台设备是 Android 6.0，且 targetSdk 抬高会带来
   运行时权限、后台限制、后台启动 Activity 限制等一堆与老设备无关的麻烦。
+
+  ★ versionCode / versionName 每发一次就要改一次，别偷懒。
+    踩过的坑：v2.0.0 期间连着重建了 4 次、每次都覆盖同一个 Release 资产，
+    结果 4 个不同的 APK 全叫 2.0.0 —— 用户分不出自己装的是哪一个，
+    先下载的人手里还是旧文件。tools/release.py 现在会拦住这种情况。
+    规则：versionCode 每次 +1，versionName 改 patch 位。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.haf1.racecontrol"
-    android:versionCode="1"
-    android:versionName="2.0.0">
+    android:versionCode="2"
+    android:versionName="2.0.1">
 
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
     <uses-permission android:name="android.permission.INTERNET" />

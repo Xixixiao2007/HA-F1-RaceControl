@@ -187,6 +187,24 @@ python tools/run_all_tests.py          # 全套测试（单元 + mock 自测 + �
 python tools/try_feel.py               # 真机手感测试台：按键就往手机推一段剧本
 ```
 
+### 发版
+
+```bash
+python tools/release.py                               # 只检查（构建 + 过两道版本号闸门）
+python tools/release.py --publish --notes <说明.md>    # 检查通过后一路发到底
+```
+
+**发版前必须改 `app/AndroidManifest.xml` 的 `versionCode`（每次 +1）和
+`versionName`（patch 位）。** 不改的话 `release.py` 会直接拒绝 —— 有两道闸：
+
+1. **本地**：源码变了但 versionCode 没变
+2. **远端**：该版本号已发布过，把远端资产下回来比对后发现内容不一样
+
+> 为什么要有这个：v2.0.0 期间连着重建了 4 次、每次覆盖同一个 Release 资产，
+> 结果 **4 个不同的 APK 全叫 `2.0.0`**（versionCode 都是 1）。
+> 用户分不出自己装的是哪一个，先下载的人手里还是旧文件。
+> 一道闸是纪律，一道是兜底。
+
 `tools/mock_ha.py` 是个本地的假 Home Assistant（REST + WebSocket），
 可以**回放 697 条真实比赛消息**，也能跑剧本：`red_flag` / `safety_car` / `vsc` /
 `test_double_yellow` / `penalty` / `race_start` / `burst`。

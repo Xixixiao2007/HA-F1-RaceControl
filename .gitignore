@@ -23,6 +23,8 @@ tools/tztest/out/
 tools/tztest/javac.args
 tools/tztest/e2eout/
 tools/tztest/e2e.args
+# 上次发布的记录（版本号守卫用），是本机状态不该提交
+tools/.release-state.json
 
 # Python
 __pycache__/
