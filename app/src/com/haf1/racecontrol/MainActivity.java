@@ -628,7 +628,7 @@ public class MainActivity extends Activity {
                 notifier.stopAlarm();       // 交给 AlertActivity 播，避免两路声音叠加
                 // 全屏横幅只管"当场叫醒"，通知栏那条负责"事后还查得到"。
                 // 两个都要：横幅一闪而过，你要是正好没看手机就什么都不知道了。
-                notifier.pushNotification(a.kind, m(a.msg), a.msg, prefs);
+                notifier.pushNotification(a.kind, m(a.msg), a.msg);
             }
             AlertActivity.show(this, a.kind, m(a.msg), a.msg.time,
                     a.msg.sector, a.msg.carNumber, a.escalated, prefs);
@@ -781,12 +781,13 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** 一行：左侧色条 + 时间 + 类型徽标 + 正文。 */
+    /** 一行：左侧色条 + 时间 + 类型徽标 + 正文 +（有的话）中文简述。 */
     private class Row extends LinearLayout {
         final View stripe;
         final TextView time;
         final TextView badge;
         final TextView value;
+        final TextView gloss;
         final LinearLayout textCol;
         private ValueAnimator anim;
 
@@ -831,6 +832,16 @@ public class MainActivity extends Activity {
             value.setMaxLines(3);
             value.setEllipsize(TextUtils.TruncateAt.END);
             textCol.addView(value);
+
+            // 中文简述（仲裁/判罚类才有）。原文又长又全是术语，比赛时来不及读。
+            gloss = new TextView(MainActivity.this);
+            gloss.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            gloss.setTextColor(0xFF00695C);
+            gloss.setMaxLines(2);
+            gloss.setEllipsize(TextUtils.TruncateAt.END);
+            gloss.setPadding(0, dp(2), 0, 0);
+            gloss.setVisibility(GONE);
+            textCol.addView(gloss);
         }
 
         void bind(RaceMessage c, boolean flash) {
@@ -846,6 +857,14 @@ public class MainActivity extends Activity {
             }
 
             value.setText(c.text());
+
+            String g = Translator.gloss(c.text());
+            if (g == null || g.length() == 0) {
+                gloss.setVisibility(GONE);
+            } else {
+                gloss.setVisibility(VISIBLE);
+                gloss.setText(g);
+            }
 
             int base = Classifier.color(kind);
             stripe.setBackgroundColor(Classifier.barColor(kind));

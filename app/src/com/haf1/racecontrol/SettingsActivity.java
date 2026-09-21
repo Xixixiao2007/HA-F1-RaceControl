@@ -114,18 +114,68 @@ public class SettingsActivity extends Activity {
 
         soundBox = check(root, "声音", p.soundEnabled, "关掉后只震动不发声。");
         vibrateBox = check(root, "震动", p.vibrateEnabled, "不同类型给不同节奏，闭着眼也能分辨。");
-        wakeBox = check(root, "强提醒时点亮屏幕", p.screenWakeEnabled,
+        wakeBox = check(root, "超强提醒时点亮屏幕", p.screenWakeEnabled,
                 "用窗口标志实现，不需要额外的系统权限。");
-        silentBox = check(root, "强提醒突破静音模式", p.silentOverride,
+        silentBox = check(root, "超强提醒突破静音模式", p.silentOverride,
                 "走闹钟通道。现场看比赛时手机多半是静音，不突破就可能漏掉红旗。");
         attentionBox = check(root, "黄旗 / 黑白旗给轻提醒", p.attentionEnabled,
                 "关掉后这两类只闪动、不发声。");
-        autoStopBox = number(root, "强提醒自动停止（秒，0=必须手动确认）",
+        autoStopBox = number(root, "超强提醒自动停止（秒，0=必须手动确认）",
                 String.valueOf(p.alarmAutoStopSec), "默认 15 秒。");
         cooldownBox = number(root, "同类型提醒冷却（秒）", String.valueOf(p.cooldownSec),
                 "避免连环炸响。红旗不受此限制。");
         connWarnBox = number(root, "断线多久后告警（秒）", String.valueOf(p.connectionWarnSec),
                 "比赛中掉线最危险 —— 你会以为赛道没消息，实际是漏了红旗。");
+
+        // ---- 试听：不用连 HA 也能当场验证声音和震动 ----
+        // 光看设置项没法知道"到底响不响、震不震得出来"，
+        // 尤其是静音模式下走闹钟通道这件事，必须真听一次。
+        header(root, "试听");
+        TextView tryHint = new TextView(this);
+        tryHint.setText("先按上面的开关调好，再点下面两下听听看。"
+                + "注意「超强提醒」走的是**闹钟音量**，不是通知音量 —— "
+                + "如果没声，先把手机闹钟音量调起来。");
+        tryHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        tryHint.setTextColor(0xFF90A4AE);
+        root.addView(tryHint);
+
+        Button tryAttention = new Button(this);
+        tryAttention.setText("试听：轻提醒（黄旗那种）");
+        tryAttention.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                collect();
+                Notifier n = new Notifier(SettingsActivity.this);
+                n.attention(p.soundEnabled, p.vibrateEnabled);
+            }
+        });
+        root.addView(tryAttention);
+
+        Button tryAlarm = new Button(this);
+        tryAlarm.setText("试听：超强提醒（红旗那种，响 4 秒）");
+        tryAlarm.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                collect();
+                final Notifier n = new Notifier(SettingsActivity.this);
+                n.startAlarm(Classifier.K_RED, p.soundEnabled, p.vibrateEnabled, p.silentOverride);
+                new android.os.Handler().postDelayed(new Runnable() {
+                    public void run() {
+                        n.release();
+                    }
+                }, 4000L);
+            }
+        });
+        root.addView(tryAlarm);
+
+        Button tryFull = new Button(this);
+        tryFull.setText("试听：全屏横幅（超强提醒的样子）");
+        tryFull.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                collect();
+                AlertActivity.show(SettingsActivity.this, Classifier.K_RED,
+                        "RED FLAG", System.currentTimeMillis(), "", "", false, p);
+            }
+        });
+        root.addView(tryFull);
 
         TextView dyLabel = new TextView(this);
         dyLabel.setText("双黄旗策略");
@@ -144,7 +194,7 @@ public class SettingsActivity extends Activity {
         TextView dyHint = new TextView(this);
         dyHint.setText("实测：一个周末有 142 条双黄消息，但只对应 24 个真实事件；"
                 + "其中 29 次存活不到 15 秒（系统测试/抖动，最短 1 秒）。"
-                + "所以双黄先给轻提醒，持续超过下面这个秒数才升级为强提醒。");
+                + "所以双黄先给轻提醒，持续超过下面这个秒数才升级为超强提醒。");
         dyHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         dyHint.setTextColor(0xFF78909C);
         dyHint.setPadding(0, dp(4), 0, dp(8));

@@ -87,6 +87,29 @@ APK 只有 **53 KB**。
 按 **RED > 安全车 > VSC > 双黄 > 黄 > 绿** 的优先级显示当前状态，
 高优先级状态生效期间锁定显示，不被随后涌入的双黄消息覆盖。
 
+### 判罚的中文简述
+
+仲裁消息又长又全是术语：
+
+```
+FIA STEWARDS: TURN 1 INCIDENT INVOLVING CAR 5 (BOR) NOTED -
+FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – ESCAPE ROAD INSTRUCTIONS (14:27:29)
+```
+
+比赛时根本没空读。所以列表里每条下面补一行中文：
+
+> **1 号弯事故（博尔托莱托(5)）：已记录 —— 未遵守赛会指令（逃生通道）**
+
+判罚尤其讲究，谁被罚、罚多少、为什么，一眼要能看出：
+
+> **★ 判罚：塞恩斯(55) 罚时 5 秒**
+> **★ 判罚：加斯利(10) 罚时 5 秒 —— 维修区超速**
+> **仲裁：塞恩斯(55) 已执行 5 秒罚时**
+
+覆盖仲裁裁决、事故记录、超赛道限制删圈速、黑白旗、蓝旗。
+**翻不出来就不显示**（宁可给原文，也不瞎猜）。规则全部是从真实数据的措辞反推的，
+三位车手缩写会转成中文姓。
+
 ### 默认噪音过滤
 
 顶部一键切换「精简 / 全部」。默认隐藏：蓝旗、解除、超赛道限制删圈速、仲裁查完没事。
@@ -158,15 +181,26 @@ flag=""   category="SafetyCar"   message="VSC DEPLOYED"
 
 ```bash
 python tools/fetch_sdk.py              # 首次：下载最小 Android 工具集（约 236 MB）
-python tools/run_tests.py              # 桌面单测（117 项）
+python tools/run_tests.py              # 桌面单测（134 项）
 python tools/build_apk.py              # 构建 APK
-python tools/run_all_tests.py            # 全套测试（单元 + mock 自测 + 端到端）
-python tools/try_feel.py                 # 真机手感测试台：按键就往手机推一段剧本
+python tools/run_all_tests.py          # 全套测试（单元 + mock 自测 + 端到端），共 6 项
+python tools/try_feel.py               # 真机手感测试台：按键就往手机推一段剧本
 ```
 
 `tools/mock_ha.py` 是个本地的假 Home Assistant（REST + WebSocket），
-可以**回放 697 条真实比赛消息**，也能跑剧本（红旗 / 安全车 / VSC / 测试型双黄 / 突发）。
+可以**回放 697 条真实比赛消息**，也能跑剧本：`red_flag` / `safety_car` / `vsc` /
+`test_double_yellow` / `penalty` / `race_start` / `burst`。
 比赛两周才有一次，用它就能随时在真机上端到端验证。
+
+**剧本里的每条消息都是逐字取自真实数据的完整句子**，不是编的短句 ——
+比如超赛道限制在真实数据里写的是
+`CAR 44 (HAM) TIME 1:34.625 DELETED - TRACK LIMITS AT TURN 17 LAP 20 14:17:09`，
+而不是 `TRACK LIMITS AT TURN 4`。用假短句测，测的就不是分类、过滤、翻译的真实输入。
+唯一的例外是安全车那两条：那一整个周末只出了 VSC，没有真安全车。
+
+`tools/try_feel.py` 是给真机手感用的：自动探测局域网 IP、起假 HA、把手机该填的
+三项打在屏幕上，然后按数字键就往手机推一段剧本。开局停在「没比赛」状态，
+不会一上来就用历史回填把屏幕刷满。
 
 ### 目录
 
@@ -177,14 +211,19 @@ app/src/com/haf1/racecontrol/
     AlertGate.java       聚类 / 升级 / 冷却 —— 降噪的核心
     TrackState.java      赛道状态机（优先级）
     MessageStore.java    去重 / 容量 / 落盘
+    Translator.java      判罚等消息的中文简述（纯函数，可单测）
     HaClient.java        REST（历史接口）
     HaWebSocket.java     WebSocket 实时推送
     WsFrame.java         RFC 6455 帧编解码
-    Notifier.java        声音 + 震动
+    Notifier.java        声音 + 震动 + 通知栏
     MainActivity.java    主界面
-    AlertActivity.java   强提醒全屏横幅
-    SettingsActivity.java 设置
-tools/tztest/            桌面单测（用桩替代 android.*）
+    AlertActivity.java   超强提醒的全屏横幅
+    SettingsActivity.java 设置（含试听按钮）
+tools/mock_ha.py         本地假 HA（REST + WebSocket），回放真实数据 / 跑剧本
+tools/try_feel.py        真机手感测试台
+tools/run_all_tests.py   全套测试
+tools/tztest/            桌面单测与端到端（用桩替代 android.*）
+tools/mock_data/         697 条真实比赛消息
 docs/USAGE.md            使用说明
 ```
 

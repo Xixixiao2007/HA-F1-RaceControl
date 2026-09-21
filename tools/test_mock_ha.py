@@ -472,8 +472,10 @@ def test_websocket_and_scenario(mock, host, port, base):
 
         states = [to_state(e) for e in events]
         msgs = [s.get("state") for s in states if s]
-        check("D20 收到 YELLOW IN TRACK SECTOR 2",
-              any("YELLOW IN TRACK SECTOR 2" == m for m in msgs), repr(msgs))
+        # 剧本里的消息现在**逐字取自真实数据**，所以断言也跟着用真实的那条
+        # （vsc 剧本派的是 09-13 21:26 那一串，第一个黄旗是扇区 23）
+        check("D20 收到 YELLOW IN TRACK SECTOR 23",
+              any("YELLOW IN TRACK SECTOR 23" == m for m in msgs), repr(msgs))
 
         # ★ 坑 A：安全车/VSC 的 flag 是空串，category 才是 SafetyCar
         vsc_ev = next((s for s in states if s and s.get("state") == "VSC DEPLOYED"), None)

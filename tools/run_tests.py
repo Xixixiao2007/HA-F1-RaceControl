@@ -45,6 +45,7 @@ TESTED_SOURCES = (
     "AlertGate.java",     # 聚类 / 升级 / 冷却
     "TrackState.java",    # 优先级状态机
     "MessageStore.java",  # 去重 / 容量 / 序列化
+    "Translator.java",    # 判罚等消息的中文简述
     "WsFrame.java",       # RFC6455 帧编解码
 )
 

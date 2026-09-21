@@ -456,7 +456,73 @@ public class TzTest {
         eq("关闭双黄", Boolean.valueOf(g10.dyEnabled), Boolean.FALSE);
 
         // ================================================================
-        // 8) WebSocket 帧编解码
+        // 8) 判罚翻译 —— 输入全部是真实数据里的原句
+        // ================================================================
+        section("Translator：判罚（输入是历史数据里的原句）");
+
+        eq("5 秒罚时",
+                Translator.gloss("FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 55 (SAI) (15:23:42)"),
+                "★ 判罚：塞恩斯(55) 罚时 5 秒");
+        eq("罚时 + 原因",
+                Translator.gloss("FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 10 (GAS)"
+                        + " - SPEEDING IN THE PIT LANE (16:42:11)"),
+                "★ 判罚：加斯利(10) 罚时 5 秒 —— 维修区超速");
+        eq("罚时已执行",
+                Translator.gloss("FIA STEWARDS: PENALTY SERVED - 5 SECOND TIME PENALTY"
+                        + " FOR CAR 55 (SAI) (15:23:42)"),
+                "仲裁：塞恩斯(55) 已执行 5 秒罚时");
+
+        section("Translator：仲裁裁决");
+        eq("复核后不予追究（多车）",
+                Translator.gloss("FIA STEWARDS: TURN 3 INCIDENT INVOLVING CARS 43 (COL)"
+                        + " AND 87 (BEA) REVIEWED NO FURTHER INVESTIGATION - IMPEDING (14:13:45)"),
+                "仲裁：3 号弯 科拉平托(43)、比尔曼(87) —— 复核完毕，不予追究（阻挡他人）");
+        eq("赛后调查",
+                Translator.gloss("FIA STEWARDS: TURN 5 INCIDENT INVOLVING CAR 77 (BOT)"
+                        + " WILL BE INVESTIGATED AFTER THE SESSION - FAILING TO FOLLOW"
+                        + " RACE DIRECTORS INSTRUCTIONS (13:45:06)"),
+                "仲裁：5 号弯 博塔斯(77) —— 赛后调查（未遵守赛会指令）");
+        eq("警告",
+                Translator.gloss("FIA STEWARDS: WARNING FOR CAR 5 (BOR)"
+                        + " - MOVING UNDER BRAKING (16:19:05)"),
+                "仲裁：博尔托莱托(5) —— 警告（制动中变线）");
+
+        section("Translator：事故记录 / 黑白旗 / 蓝旗");
+        eq("事故已记录（带破折号的那种指令）",
+                Translator.gloss("TURN 1 INCIDENT INVOLVING CAR 43 (COL) NOTED - FAILING TO"
+                        + " FOLLOW RACE DIRECTORS INSTRUCTIONS \u2013 ESCAPE ROAD"
+                        + " INSTRUCTIONS (14:27:00)"),
+                "1 号弯事故（科拉平托(43)）：已记录 —— 未遵守赛会指令（逃生通道）");
+        eq("黑白旗",
+                Translator.gloss("BLACK AND WHITE FLAG FOR CAR 1 (NOR) - FAILING TO FOLLOW"
+                        + " RACE DIRECTORS INSTRUCTIONS (16:47:39)"),
+                "黑白旗警告：诺里斯(1) —— 未遵守赛会指令");
+        eq("蓝旗",
+                Translator.gloss("WAVED BLUE FLAG FOR CAR 14 (ALO) TIMED AT 15:42:56"),
+                "蓝旗（让车）：阿隆索(14)");
+
+        section("Translator：超赛道限制删圈速");
+        eq("单圈成绩被删",
+                Translator.gloss("CAR 12 (ANT) TIME 1:57.307 DELETED - TRACK LIMITS"
+                        + " AT TURN 18 LAP 3 13:34:28"),
+                "安东内利(12)：单圈成绩被删 —— 18 号弯超出赛道限制（第 3 圈）");
+        eq("整圈成绩被删",
+                Translator.gloss("CAR 5 (BOR) LAP DELETED - TRACK LIMITS AT TURN 5"
+                        + " LAP 7 13:41:22 (PIT)"),
+                "博尔托莱托(5)：整圈成绩被删 —— 5 号弯超出赛道限制（第 7 圈）");
+
+        section("Translator：翻不出来必须返回 null（宁可显示原文，不要瞎猜）");
+        eq("红旗没有简述", Translator.gloss("RED FLAG"), null);
+        eq("双黄旗没有简述", Translator.gloss("DOUBLE YELLOW IN TRACK SECTOR 12"), null);
+        eq("绿旗没有简述", Translator.gloss("GREEN LIGHT - PIT EXIT OPEN"), null);
+        eq("空串返回 null", Translator.gloss(""), null);
+        eq("null 返回 null", Translator.gloss(null), null);
+        eq("未知车手退回缩写",
+                Translator.gloss("WAVED BLUE FLAG FOR CAR 99 (XYZ) TIMED AT 15:42:56"),
+                "蓝旗（让车）：XYZ(99)");
+
+        // ================================================================
+        // 9) WebSocket 帧编解码
         // ================================================================
         section("WsFrame 帧编解码（RFC 6455）");
         byte[] mask = new byte[] {0x37, (byte) 0xfa, 0x21, 0x3d};

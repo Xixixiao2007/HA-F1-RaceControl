@@ -44,6 +44,7 @@ public class AlertActivity extends Activity {
     private LinearLayout root;
     private TextView kindView;
     private TextView textView;
+    private TextView glossView;
     private TextView metaView;
     private TextView countdownView;
     private Button ackButton;
@@ -97,13 +98,24 @@ public class AlertActivity extends Activity {
         textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         textView.setGravity(Gravity.CENTER);
         textView.setTextColor(Color.WHITE);
-        textView.setPadding(0, dp(18), 0, dp(18));
+        textView.setPadding(0, dp(18), 0, dp(6));
         root.addView(textView);
+
+        // 中文简述（仲裁/判罚类才有）
+        glossView = new TextView(this);
+        glossView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        glossView.setGravity(Gravity.CENTER);
+        glossView.setTextColor(0xFFFFFFFF);
+        glossView.setBackgroundColor(0x33000000);
+        glossView.setPadding(dp(12), dp(8), dp(12), dp(8));
+        glossView.setVisibility(View.GONE);
+        root.addView(glossView);
 
         metaView = new TextView(this);
         metaView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         metaView.setGravity(Gravity.CENTER);
         metaView.setTextColor(0xCCFFFFFF);
+        metaView.setPadding(0, dp(12), 0, 0);
         root.addView(metaView);
 
         countdownView = new TextView(this);
@@ -150,6 +162,15 @@ public class AlertActivity extends Activity {
         root.setBackgroundColor(Classifier.barColor(kind));
         kindView.setText(Classifier.label(kind));
         textView.setText(text == null || text.length() == 0 ? "(无文本)" : text);
+
+        // 有中文简述就补一行 —— 横幅上字号大，原文往往是长串术语，来不及读
+        String gloss = Translator.gloss(text);
+        if (gloss == null || gloss.length() == 0) {
+            glossView.setVisibility(View.GONE);
+        } else {
+            glossView.setVisibility(View.VISIBLE);
+            glossView.setText(gloss);
+        }
 
         StringBuilder meta = new StringBuilder();
         if (escalated) {
