@@ -32,10 +32,13 @@ import java.util.Set;
  * 主页：赛事控制消息流水。
  *
  * 版面自上而下：
- *   1. 标题栏（实体名 + 右上角设置键）
- *   2. **赛道状态条** —— 按优先级显示当前最高级别旗语（RED > SC > VSC > 双黄 > 黄）
- *   3. 状态行（连接方式 / 条数 / 丢号提示 / 过滤开关）
- *   4. 消息列表（新消息闪动 → 定格到等级配色）
+ *   1. **标题栏 = 旗语**（整条按当前级别上色：红旗/安全车/VSC/双黄/黄/绿 + 扇区）
+ *   2. 状态行（连接方式 / 条数 / 丢号提示 / 过滤开关）
+ *   3. 消息列表（新消息闪动 → 定格到等级配色）
+ *
+ * 旗语原本单独占一条 26sp 的大状态条，实体名占标题栏 —— 用户说
+ * 「把旗语放到标题栏代替传感器名」，于是两条合并成一条：
+ * 标题栏上色显示旗语，省掉一整行，屏幕只剩「标题栏 + 状态行 + 列表」。
  */
 public class MainActivity extends Activity {
 
@@ -66,9 +69,9 @@ public class MainActivity extends Activity {
     private final MessageStore store = new MessageStore();
 
     private TextView titleView;
-    private TextView stateView;
-    private TextView stateDetailView;
-    private LinearLayout stateBar;
+    private TextView titleDetailView;
+    private LinearLayout titleBar;
+    private TextView settingsView;
     private TextView statusView;
     private TextView filterToggle;
 
@@ -118,7 +121,6 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFFF5F5F5);
         root.addView(buildTitleBar());
-        root.addView(buildStateBar());
         root.addView(buildStatusRow());
 
         listView = new ListView(this);
@@ -134,58 +136,52 @@ public class MainActivity extends Activity {
         loadStore();
     }
 
+    /**
+     * 标题栏 = 旗语条。整条按当前级别上色（红旗红、双黄黄、绿旗绿…），
+     * 左边是大号旗语，中间是扇区明细，右边是设置键。
+     *
+     * 原来是「实体名占标题栏 + 单独一条 26sp 状态条显示旗语」两行；
+     * 用户说「把旗语放到标题栏代替传感器名」，于是合并成一行：
+     * 实体名不再显示（它只在设置页里有意义），旗语顶到最显眼的位置。
+     */
     private View buildTitleBar() {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(COLOR_BAR);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(14), dp(9), dp(6), dp(9));
+        titleBar = new LinearLayout(this);
+        titleBar.setOrientation(LinearLayout.HORIZONTAL);
+        titleBar.setBackgroundColor(COLOR_BAR);
+        titleBar.setGravity(Gravity.CENTER_VERTICAL);
+        titleBar.setPadding(dp(14), dp(8), dp(6), dp(8));
 
+        // 旗语本体：22sp。比原来的 26sp 略小，因为这一行还要放"设置"，
+        // 但仍然是全屏最大的一行字，扫一眼就够。
         titleView = new TextView(this);
-        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         titleView.setTextColor(COLOR_BAR_TEXT);
         titleView.setSingleLine(true);
-        titleView.setEllipsize(TextUtils.TruncateAt.END);
-        bar.addView(titleView, new LinearLayout.LayoutParams(0,
+        titleBar.addView(titleView);
+
+        // 扇区明细 / SESSION SUSPENDED 之类的补充说明
+        titleDetailView = new TextView(this);
+        titleDetailView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        titleDetailView.setTextColor(COLOR_BAR_TEXT);
+        titleDetailView.setSingleLine(true);
+        titleDetailView.setEllipsize(TextUtils.TruncateAt.END);
+        titleDetailView.setPadding(dp(10), dp(5), 0, 0);
+        titleBar.addView(titleDetailView, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView settings = new TextView(this);
-        settings.setText("设置");
-        settings.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        settings.setTextColor(COLOR_BAR_TEXT);
-        settings.setPadding(dp(14), dp(8), dp(14), dp(8));
-        settings.setOnClickListener(new View.OnClickListener() {
+        settingsView = new TextView(this);
+        settingsView.setText("设置");
+        settingsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        settingsView.setTextColor(COLOR_BAR_TEXT);
+        settingsView.setPadding(dp(14), dp(8), dp(14), dp(8));
+        settingsView.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 startActivityForResult(new Intent(MainActivity.this, SettingsActivity.class),
                         REQ_SETTINGS);
             }
         });
-        bar.addView(settings);
-        return bar;
-    }
-
-    /** 赛道状态条：整条按当前级别上色，字很大，扫一眼就知道现在什么状况。 */
-    private View buildStateBar() {
-        stateBar = new LinearLayout(this);
-        stateBar.setOrientation(LinearLayout.HORIZONTAL);
-        stateBar.setGravity(Gravity.CENTER_VERTICAL);
-        stateBar.setPadding(dp(14), dp(8), dp(14), dp(8));
-        stateBar.setBackgroundColor(0xFF455A64);
-
-        stateView = new TextView(this);
-        stateView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
-        stateView.setSingleLine(true);
-        stateBar.addView(stateView);
-
-        stateDetailView = new TextView(this);
-        stateDetailView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        stateDetailView.setSingleLine(true);
-        stateDetailView.setEllipsize(TextUtils.TruncateAt.END);
-        stateDetailView.setPadding(dp(12), dp(6), 0, 0);
-        stateBar.addView(stateDetailView, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        return stateBar;
+        titleBar.addView(settingsView);
+        return titleBar;
     }
 
     private View buildStatusRow() {
@@ -273,8 +269,13 @@ public class MainActivity extends Activity {
         }
 
         if (!prefs.isConfigured()) {
-            titleView.setText("未配置 · HA-F1-RaceControl");
-            renderStateBar();
+            // 还没配置：标题栏不显示旗语（没意义），改回中性底色并说明状态
+            titleBar.setBackgroundColor(COLOR_BAR);
+            titleView.setText("未配置");
+            titleView.setTextColor(COLOR_BAR_TEXT);
+            settingsView.setTextColor(COLOR_BAR_TEXT);
+            titleDetailView.setText("HA-F1-RaceControl");
+            titleDetailView.setTextColor(COLOR_BAR_SUB);
             setStatus("请点右上角「设置」填写地址、令牌和实体名", false);
             if (!autoOpenedSettings) {
                 autoOpenedSettings = true;
@@ -283,7 +284,9 @@ public class MainActivity extends Activity {
             return;
         }
 
-        titleView.setText("F1 Race Control · " + prefs.entityId);
+        // 标题栏就是旗语条，实体名不再显示（它只在设置页里有意义）。
+        // 先渲染一次，免得刚进界面时标题栏空着。
+        renderStateBar();
         setStatus("", true);
         startRealtime();
         startPolling();
@@ -739,16 +742,24 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** 顶部状态条：锁定显示当前最高优先级状态。 */
+    /**
+     * 标题栏 = 旗语条：整条按当前最高优先级状态上色，锁定显示。
+     *
+     * 「设置」键的文字颜色必须跟着底色走 —— 双黄/黄/VSC 是浅底，
+     * 白字会糊成一片看不见（`track.textColor()` 专门处理这件事）。
+     */
     private void renderStateBar() {
-        stateBar.setBackgroundColor(track.color());
-        stateView.setText(track.label());
-        stateView.setTextColor(track.textColor());
-        stateDetailView.setText(track.detail());
-        stateDetailView.setTextColor(track.textColor());
+        int bg = track.color();
+        int fg = track.textColor();
+        titleBar.setBackgroundColor(bg);
+        titleView.setText(track.label());
+        titleView.setTextColor(fg);
+        settingsView.setTextColor(fg);
+        titleDetailView.setText(track.detail());
+        titleDetailView.setTextColor(fg);
         int pend = gate.pendingCount();
         if (pend > 0 && track.level() < TrackState.DY) {
-            stateDetailView.setText("观察中 ×" + pend);
+            titleDetailView.setText("观察中 ×" + pend);
         }
     }
 
