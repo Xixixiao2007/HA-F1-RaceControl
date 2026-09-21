@@ -10,29 +10,27 @@
 
 根因不是"忘了"，而是**没有任何东西拦着**。所以这里加两道闸：
 
-  闸 1（本地）：源码变了但 versionCode 没变 -> 直接拒绝
-  闸 2（远端）：GitHub 上已经有这个版本号、但资产内容不一样 -> 直接拒绝
+  闸 1（本地）：源码变了但 versionCode 没变  -> 拒绝
+  闸 2（远端）：该版本号已发布过，把远端资产下回来逐字节比，内容不同 -> 拒绝
 
 闸 2 是关键：就算本地状态文件被删了，只要那个版本号已经发过、内容又不同，
-它照样会拦下来。
+它照样拦得住。
 
 ## 用法
-    python tools/release.py                 # 只检查，不发布（构建 + 算 SHA + 过两道闸）
+    python tools/release.py                 # 只检查（构建 + 算 SHA + 过闸），不发布
     python tools/release.py --publish        # 检查通过后一路发到底
     python tools/release.py --publish --notes <md>   # 用指定的 Release 说明
 
-    --publish 会自动：构建 -> 打标签 -> 推 main 和标签 -> 建/更新 Release -> 上传 APK -> 匿名下载复验
+--publish 会自动：构建 -> 打标签 -> 推 main 和标签 -> 建/更新 Release
+                  -> 上传 APK -> **匿名下载复验 SHA256**
 
 环境变量：GH_PAT（GitHub 令牌，可用 dsh 的 gh_get_pat.ps1 解析出来）
 """
 import argparse
 import base64
 import hashlib
-import importlib.util
 import json
 import os
-import re
-import shutil
 import subprocess
 import sys
 import time
@@ -50,6 +48,13 @@ REPO = "Xixixiao2007/HA-F1-RaceControl"
 STATE = os.path.join(HERE, ".release-state.json")
 DIST = os.path.dirname(ROOT)          # APK 放到仓库的上一级（跟以前一致）
 
+API = "https://api.github.com"
+UPLOADS = "https://uploads.github.com"
+
+
+# ----------------------------------------------------------------------
+# 小工具
+# ----------------------------------------------------------------------
 
 def sh(cmd, env=None, cwd=None, check=True):
     p = subprocess.run(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
@@ -63,13 +68,53 @@ def sh(cmd, env=None, cwd=None, check=True):
     return p
 
 
-def load_gh():
-    """把 gh_release.py 当模块加载，复用它的 REST 客户端。"""
-    spec = importlib.util.spec_from_file_location(
-        "ghrel", os.path.join(HERE, "gh_release.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+# ----------------------------------------------------------------------
+# GitHub REST（只内联本脚本用得上的几个，避免依赖仓库外的工具）
+# ----------------------------------------------------------------------
+
+def gh_call(token, method, url, body=None, raw=None, content_type=None, attempts=4):
+    if not url.startswith("http"):
+        url = API + url
+    data = raw if raw is not None else (
+        json.dumps(body).encode("utf-8") if body is not None else None)
+    last = None
+    for i in range(attempts):
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Authorization", "Bearer " + token)
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("User-Agent", "ha-f1-release")
+        if data is not None:
+            req.add_header("Content-Type", content_type or "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                b = r.read()
+                return r.status, (json.loads(b) if b else None)
+        except urllib.error.HTTPError as e:
+            b = e.read()
+            try:
+                return e.code, json.loads(b)
+            except Exception:
+                return e.code, b.decode("utf-8", "replace")
+        except Exception as e:  # 网络抖动
+            last = e
+            if i < attempts - 1:
+                time.sleep(2.0 * (i + 1))
+    raise last
+
+
+def gh_find_release(token, tag):
+    st, rel = gh_call(token, "GET", "/repos/%s/releases/tags/%s" % (REPO, tag))
+    if st == 200:
+        return rel
+    if st == 404:
+        return None
+    raise SystemExit("查 Release 失败 HTTP %s: %s" % (st, rel))
+
+
+def gh_download(url):
+    req = urllib.request.Request(url)
+    req.add_header("User-Agent", "ha-f1-release")
+    return urllib.request.urlopen(req, timeout=180).read()
 
 
 # ----------------------------------------------------------------------
@@ -81,7 +126,7 @@ def read_version():
     code, name = build_apk.read_manifest_version(manifest)
     if not code or not name:
         raise SystemExit("AndroidManifest.xml 里读不到 versionCode / versionName")
-    return int(code), name, manifest
+    return int(code), name
 
 
 def source_hash():
@@ -93,16 +138,13 @@ def source_hash():
     """
     h = hashlib.sha256()
     targets = []
-    src = os.path.join(ROOT, "app", "src")
-    res = os.path.join(ROOT, "app", "res")
-    for base in (src, res):
+    for base in (os.path.join(ROOT, "app", "src"), os.path.join(ROOT, "app", "res")):
         for dirpath, _dirs, files in os.walk(base):
             for f in files:
                 targets.append(os.path.join(dirpath, f))
     targets.append(os.path.join(ROOT, "app", "AndroidManifest.xml"))
     for path in sorted(targets):
-        rel = os.path.relpath(path, ROOT).replace("\\", "/")
-        h.update(rel.encode("utf-8"))
+        h.update(os.path.relpath(path, ROOT).replace("\\", "/").encode("utf-8"))
         with open(path, "rb") as fh:
             h.update(fh.read())
     return h.hexdigest()
@@ -116,13 +158,8 @@ def load_state():
         return {}
 
 
-def save_state(d):
-    with open(STATE, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=2)
-
-
 # ----------------------------------------------------------------------
-# 闸门
+# 两道闸
 # ----------------------------------------------------------------------
 
 def gate_local(code, name, src_hash):
@@ -132,8 +169,7 @@ def gate_local(code, name, src_hash):
         print("  闸 1（本地）：没有上次发布的记录，跳过")
         return
     same_version = (st.get("versionCode") == code and st.get("versionName") == name)
-    same_source = (st.get("sourceHash") == src_hash)
-    if same_version and not same_source:
+    if same_version and st.get("sourceHash") != src_hash:
         print()
         print("  " + "!" * 62)
         print("  [拒绝] 源码变了，但版本号没变。")
@@ -142,17 +178,17 @@ def gate_local(code, name, src_hash):
         print("     现在还是：versionCode=%s versionName=%s" % (code, name))
         print()
         print("     请改 app/AndroidManifest.xml：versionCode 每次 +1，")
-        print("     versionName 改 patch 位（%s -> 下一个）。" % name)
+        print("     versionName 改 patch 位。")
         print("  " + "!" * 62)
         raise SystemExit(1)
-    if same_version and same_source:
+    if same_version:
         print("  闸 1（本地）：版本号和源码都没变（重复发布同一份内容）")
     else:
-        print("  闸 1（本地）：通过（版本号已从 %s 升到 %s）"
+        print("  闸 1（本地）：通过（版本号从 %s 升到了 %s）"
               % (st.get("versionName"), name))
 
 
-def gate_remote(gh, token, name, apk_sha):
+def gate_remote(token, name, apk_sha):
     """
     闸 2：远端已经有这个版本号了，就把它的资产**下回来逐字节比**。
 
@@ -163,7 +199,7 @@ def gate_remote(gh, token, name, apk_sha):
     这一道是最后防线：就算本地状态文件被删了，只要这个版本号发过、内容又不同，
     照样拦得住。
     """
-    rel = gh.find_release(token, REPO, "v" + name)
+    rel = gh_find_release(token, "v" + name)
     if not rel:
         print("  闸 2（远端）：v%s 还没发布过，通过" % name)
         return
@@ -174,10 +210,8 @@ def gate_remote(gh, token, name, apk_sha):
     a = assets[0]
     print("  闸 2（远端）：v%s 已发布，资产 %s（%d 字节），下载比对 ..."
           % (name, a["name"], a["size"]))
-    req = urllib.request.Request(a["browser_download_url"])
-    req.add_header("User-Agent", "release-gate")
     try:
-        remote = urllib.request.urlopen(req, timeout=120).read()
+        remote = gh_download(a["browser_download_url"])
     except Exception as e:
         print("     下载失败（%s），跳过这一道闸" % e)
         return
@@ -197,7 +231,7 @@ def gate_remote(gh, token, name, apk_sha):
 
 
 # ----------------------------------------------------------------------
-# 发布
+# 推送
 # ----------------------------------------------------------------------
 
 def git_push(token, refs):
@@ -211,6 +245,8 @@ def git_push(token, refs):
         sh(["git", "-c", "credential.helper=", "push", "origin", ref], env=env, cwd=ROOT)
 
 
+# ----------------------------------------------------------------------
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--publish", action="store_true", help="检查通过后真的发布")
@@ -219,7 +255,7 @@ def main():
                     help="跳过闸门（只在你明确知道自己在干什么时用）")
     args = ap.parse_args()
 
-    code, name, manifest = read_version()
+    code, name = read_version()
     tag = "v" + name
     apk = os.path.join(DIST, "HA-F1-RaceControl-%s.apk" % tag)
 
@@ -234,13 +270,10 @@ def main():
     if not args.force:
         gate_local(code, name, src_hash)
 
-    # ---- 构建 ----
     print()
     print("  构建 APK ...")
-    env = dict(os.environ)
-    env.setdefault("HAF1_SDK", build_apk.find_sdk() or "")
     sh([sys.executable, os.path.join(HERE, "build_apk.py"),
-        "--out", apk, "--name", os.path.basename(apk)[:-4]], env=env, cwd=ROOT)
+        "--out", apk, "--name", os.path.basename(apk)[:-4]], cwd=ROOT)
     apk_sha = hashlib.sha256(open(apk, "rb").read()).hexdigest()
     print("  产物     : %s" % apk)
     print("  大小     : %d 字节" % os.path.getsize(apk))
@@ -254,14 +287,13 @@ def main():
     token = os.environ.get("GH_PAT") or os.environ.get("GITHUB_TOKEN")
     if not token:
         raise SystemExit("  需要 GH_PAT 环境变量（可用 dsh 的 gh_get_pat.ps1 解析）")
-    gh = load_gh()
 
     if not args.force:
-        gate_remote(gh, token, name, apk_sha)
+        gate_remote(token, name, apk_sha)
 
     # ---- 打标签 + 推送 ----
     print()
-    print("  打标签 %s 并推送 ..." % tag)
+    print("  打标签 %s 并推送 main ..." % tag)
     sh(["git", "tag", "-d", tag], cwd=ROOT, check=False)
     sh(["git", "tag", "-a", tag, "-m",
         "HA-F1-RaceControl %s\n\nversionCode %d。详见 CHANGELOG.md。" % (tag, code)],
@@ -271,28 +303,29 @@ def main():
     # ---- 发 Release ----
     print()
     print("  发布 Release ...")
-    rel = gh.find_release(token, REPO, tag)
     body = ""
     if args.notes and os.path.exists(args.notes):
         body = open(args.notes, encoding="utf-8").read()
+    rel = gh_find_release(token, tag)
     if rel:
-        st, _ = gh.call("PATCH", "/repos/%s/releases/%d" % (REPO, rel["id"]), token,
+        st, _ = gh_call(token, "PATCH", "/repos/%s/releases/%d" % (REPO, rel["id"]),
                         body={"body": body, "name": tag})
         print("     更新已有 Release -> HTTP %s" % st)
         for a in rel.get("assets", []):
-            gh.call("DELETE", "/repos/%s/releases/assets/%d" % (REPO, a["id"]), token)
+            gh_call(token, "DELETE", "/repos/%s/releases/assets/%d" % (REPO, a["id"]))
             print("     删旧资产 %s" % a["name"])
     else:
-        st, rel = gh.call("POST", "/repos/%s/releases" % REPO, token, body={
-            "tag_name": tag, "name": tag, "body": body, "draft": False, "prerelease": False})
+        st, rel = gh_call(token, "POST", "/repos/%s/releases" % REPO, body={
+            "tag_name": tag, "name": tag, "body": body,
+            "draft": False, "prerelease": False})
         if st != 201:
             raise SystemExit("  建 Release 失败 HTTP %s: %s" % (st, rel))
         print("     新建 Release -> %s" % rel["html_url"])
 
     data = open(apk, "rb").read()
-    url = ("https://uploads.github.com/repos/%s/releases/%d/assets?name=%s"
-           % (REPO, rel["id"], urllib.parse.quote(os.path.basename(apk))))
-    st, res = gh.call("POST", url, token, raw=data,
+    url = ("%s/repos/%s/releases/%d/assets?name=%s"
+           % (UPLOADS, REPO, rel["id"], urllib.parse.quote(os.path.basename(apk))))
+    st, res = gh_call(token, "POST", url, raw=data,
                       content_type="application/vnd.android.package-archive")
     if st != 201:
         raise SystemExit("  上传失败 HTTP %s: %s" % (st, res))
@@ -301,20 +334,22 @@ def main():
     # ---- 匿名下载复验 ----
     print()
     print("  匿名下载复验 ...")
-    req = urllib.request.Request(res["browser_download_url"])
-    req.add_header("User-Agent", "release-verify")
-    got = urllib.request.urlopen(req, timeout=120).read()
+    got = gh_download(res["browser_download_url"])
     got_sha = hashlib.sha256(got).hexdigest()
     if got_sha != apk_sha or len(got) != len(data):
         raise SystemExit("  [FAIL] 远端内容与本地不一致！本地 %s / 远端 %s"
                          % (apk_sha, got_sha))
     print("     [OK] 匿名下载 %d 字节，SHA256 一致" % len(got))
 
-    save_state({"versionCode": code, "versionName": name, "sourceHash": src_hash,
-                "apkSha256": apk_sha, "tag": tag, "at": time.strftime("%Y-%m-%d %H:%M:%S")})
+    with open(STATE, "w", encoding="utf-8") as f:
+        json.dump({"versionCode": code, "versionName": name, "sourceHash": src_hash,
+                   "apkSha256": apk_sha, "tag": tag,
+                   "at": time.strftime("%Y-%m-%d %H:%M:%S")},
+                  f, ensure_ascii=False, indent=2)
     print()
     print("=" * 70)
     print("  已发布 %s" % rel["html_url"])
+    print("  本次 SHA256 = %s" % apk_sha)
     print("=" * 70)
     return 0
 
