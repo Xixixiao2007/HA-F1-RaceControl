@@ -342,6 +342,31 @@ public class TzTest {
         eq("IN THIS LAP 时安全车仍在",
                 Integer.valueOf(ts3.level()), Integer.valueOf(TrackState.SC));
 
+        // ★ 回归：标题栏的文字必须是**全中文**。
+        //   原来红旗时右侧跟的是 `SESSION SUSPENDED`、安全车跟 `SAFETY CAR` ——
+        //   中文界面上最要紧的那个状态，旁边挂着一串英文。
+        section("TrackState：标题栏文案全中文（不许再漏英文）");
+        TrackState zh = new TrackState();
+        eq("没旗语时是中文", zh.detail(), "赛道正常");
+        zh.onMessage(mk("", "SafetyCar", "", "SAFETY CAR DEPLOYED"));
+        eq("安全车 -> 全场", zh.detail(), "全场");
+        zh = new TrackState();
+        zh.onMessage(mk("", "SafetyCar", "", "VSC DEPLOYED"));
+        eq("VSC -> 全场", zh.detail(), "全场");
+        zh = new TrackState();
+        zh.onMessage(mk("RED", "Flag", "Track", "RED FLAG"));
+        eq("红旗 -> 比赛暂停（SESSION 是「比赛环节」，不是「会话」）",
+                zh.detail(), "比赛暂停");
+        eq("红旗标签也中文", zh.label(), "红旗");
+        // 注意：红旗不会因为随后的黄旗/双黄而解掉（这是有意的「锁定显示」），
+        // 所以「列出区段」那一档要用**另一个** TrackState 测。
+        TrackState zh2 = new TrackState();
+        zh2.onMessage(mk("", "Flag", "5", "YELLOW IN TRACK SECTOR 5"));
+        zh2.onMessage(mk("DOUBLE YELLOW", "Flag", "7", "DOUBLE YELLOW IN TRACK SECTOR 7"));
+        eq("双黄 -> 列出区段", zh2.detail(), "区段 7");
+        eq("双黄旗标签", zh2.label(), "双黄旗");
+        eq("红旗锁定：不因为后续黄旗改掉", zh.label(), "红旗");
+
         // ================================================================
         // 6) 去重与存储
         // ================================================================
@@ -439,11 +464,11 @@ public class TzTest {
         eq("★ 维修区解除（PIT LANE CLEAR）—— 别被 CLEAR 规则吞掉",
                 Boolean.valueOf(Prefs.isNoise(mk("", "Other", "", "PIT LANE CLEAR"))),
                 Boolean.FALSE);
-        eq("会话恢复",
+        eq("比赛重启（不被过滤）",
                 Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
                         "SESSION WILL RESUME AT 17:47"))),
                 Boolean.FALSE);
-        eq("会话暂停",
+        eq("比赛中止（不被过滤）",
                 Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
                         "SESSION WILL BE TEMPORARILY STOPPED"))),
                 Boolean.FALSE);
@@ -649,7 +674,7 @@ public class TzTest {
                         + " LAP 7 13:41:22 (PIT)"),
                 "博托莱托(5)：整圈成绩被删 —— 5 号弯超出赛道限制（第 7 圈）");
 
-        // ★ 内容型消息：徽标说不清楚的那些（维修区 / 会话 / 天气 / 赛道状况）。
+        // ★ 内容型消息：徽标说不清楚的那些（维修区 / 比赛环节 / 天气 / 赛道状况）。
         //   `DOUBLE YELLOW IN TRACK SECTOR 12` 不翻，因为徽标就是「双黄旗」；
         //   `YELLOW IN PIT LANE` 要翻，因为徽标只说「黄旗」，没说是维修区的。
         section("Translator：内容型消息（徽标表达不出来的才翻）");
@@ -657,10 +682,12 @@ public class TzTest {
                 Translator.gloss("YELLOW IN PIT LANE"), "维修区黄旗");
         eq("维修区解除",
                 Translator.gloss("PIT LANE CLEAR"), "维修区解除");
-        eq("会话恢复（带时刻）",
-                Translator.gloss("SESSION WILL RESUME AT 17:47"), "会话将于 17:47 恢复");
-        eq("会话中止",
-                Translator.gloss("SESSION WILL BE TEMPORARILY STOPPED"), "会话暂时中止");
+        // SESSION 是**这一个比赛环节**（一练/排位/正赛），简称「比赛」。
+        // 译成「会话」是计算机味的误译（用户指出）。
+        eq("比赛重启（带时刻）",
+                Translator.gloss("SESSION WILL RESUME AT 17:47"), "比赛将于 17:47 重启");
+        eq("比赛中止",
+                Translator.gloss("SESSION WILL BE TEMPORARILY STOPPED"), "比赛暂时中止");
         eq("赛道湿滑（带区段）",
                 Translator.gloss("TRACK SURFACE SLIPPERY IN TRACK SECTOR 26"),
                 "赛道湿滑（26 号区段）");

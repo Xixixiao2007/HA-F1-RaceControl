@@ -345,7 +345,7 @@ public final class Translator {
      *   -> 不翻（翻了只是把徽标再说一遍）
      *   `YELLOW IN PIT LANE` 徽标只说「黄旗」，没说是**维修区**的
      *   -> 要翻（不翻就丢了关键信息）
-     * 所以这里只收「内容型」消息：维修区、会话、天气、赛道状况、车手相关。
+     * 所以这里只收「内容型」消息：维修区、比赛环节、天气、赛道状况、车手相关。
      *
      * 这些句式来自一个完整比赛周末的 697 条真实消息，一条不编。
      */
@@ -366,12 +366,14 @@ public final class Translator {
         if (up.indexOf("PIT LANE CLEAR") >= 0) {
             return "维修区解除";
         }
+        // `SESSION` 指的是**这一个比赛环节**（一练/排位/正赛），简称就是「比赛」。
+        // 译成「会话」是计算机味的误译（用户指出）。
         if (up.indexOf("SESSION WILL RESUME") >= 0) {
             String t = clock(up);
-            return "会话将于 " + (t.length() > 0 ? t : "稍后") + " 恢复";
+            return "比赛将于 " + (t.length() > 0 ? t : "稍后") + " 重启";
         }
         if (up.indexOf("SESSION WILL BE TEMPORARILY STOPPED") >= 0) {
-            return "会话暂时中止";
+            return "比赛暂时中止";
         }
         if (up.indexOf("MARSHALS ON TRACK") >= 0) {
             String turn = turn(up);

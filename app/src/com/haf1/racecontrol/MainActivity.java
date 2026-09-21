@@ -859,19 +859,17 @@ public class MainActivity extends Activity {
 
             textCol.addView(head);
 
+            // 原文：**不截断**。用户要求长消息也看全 ——
+            // 原来限 3 行 + 省略号，那两条 200 字的仲裁消息会被切掉一半。
+            // 一条消息占几行就占几行，列表本来就是滚动的。
             value = new TextView(MainActivity.this);
             value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
             value.setTextColor(0xFF212121);
-            value.setMaxLines(3);
-            value.setEllipsize(TextUtils.TruncateAt.END);
             textCol.addView(value);
 
             // 中文简述（仲裁/判罚类才有）。原文又长又全是术语，比赛时来不及读。
             //
-            // **不设 maxLines / ellipsize**：用户要求长句必须显示全 ——
-            // 那两条 8 辆、9 辆车的仲裁消息，译文列全了车号要三四行，
-            // 截断就等于把"到底涉及哪几辆车"又给藏回去了。
-            // 原文（value）仍限 3 行：它是参照物，意思由译文承担。
+            // 同样**不设 maxLines / ellipsize**：译文列全车号后要三四行。
             gloss = new TextView(MainActivity.this);
             gloss.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             gloss.setTextColor(0xFF00695C);

@@ -205,7 +205,7 @@ public class Prefs {
      * - 仲裁消息，含「调查开始 / 调查中 / 复核不予追究 / 判罚」全过程（用户要求）
      * - 任何提到 INCIDENT 的事故记录
      * - 维修区状态（`YELLOW IN PIT LANE` / `PIT LANE CLEAR`）
-     * - 会话控制（`SESSION WILL RESUME AT ...` / `SESSION WILL BE TEMPORARILY STOPPED`）
+     * - 比赛环节控制（`SESSION WILL RESUME AT ...` / `SESSION WILL BE TEMPORARILY STOPPED`）
      *
      * 后两类是用户点名的。它们**今天**本来就没被隐藏，但那是靠数据恰好这么标
      * (`PIT LANE CLEAR` 的 flag 是空串、不是 `CLEAR`) —— 靠运气不算数。

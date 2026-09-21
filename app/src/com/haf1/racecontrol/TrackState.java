@@ -169,20 +169,26 @@ public class TrackState {
         return "无旗语";
     }
 
-    /** 状态条的补充说明（涉及的区段）。 */
+    /**
+     * 标题栏的补充说明（旗语旁边的浅色小字）。
+     *
+     * ★ 这里原来有三条**英文**：`SESSION SUSPENDED` / `SAFETY CAR` /
+     *   `VIRTUAL SAFETY CAR` —— 中文界面上最要紧的红旗状态，旁边跟一串英文。
+     *   现在全中文：
+     *     · 红旗 -> 比赛暂停（SESSION 就是**这一个比赛环节**，不是「会话」）
+     *     · 安全车 / VSC -> 全场（和双黄旗的「区段 12,13」形成对照：
+     *       整条赛道 vs 某几个区段）
+     */
     public String detail() {
         int lvl = level();
         if (lvl == NONE || lvl == GREEN) {
             return "赛道正常";
         }
         if (lvl == RED) {
-            return "SESSION SUSPENDED";
+            return "比赛暂停";
         }
-        if (lvl == SC) {
-            return "SAFETY CAR";
-        }
-        if (lvl == VSC) {
-            return "VIRTUAL SAFETY CAR";
+        if (lvl == SC || lvl == VSC) {
+            return "全场";
         }
         List<Integer> list = (lvl == DY) ? doubleYellowSectors() : yellowSectors();
         if (list.isEmpty()) {
