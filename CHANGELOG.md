@@ -44,15 +44,9 @@ BLACK AND WHITE FLAG FOR CAR 44 (HAM) - TRACK LIMITS
 
 ### 工程
 
-- **`git push` 不通时自动降级走 GitHub REST。** `github.com` 与 `api.github.com`
-  不是同一条路（本机实测过一边全挂一边通）。降级通道用 Git Data API 逐个重放
-  提交，并核对每一步的 blob / tree / commit / tag SHA，对不上立刻停下 ——
-  宁可失败，也不在远端留一个分叉的提交。
-- **新增 `tools/test_release_meta.py`**（已并入 `run_all_tests.py` 第 ④ 项）：
-  本地把提交/标签对象拼回去算 SHA，和 `git rev-parse` 逐字节对。它一上来就抓到两个
-  真错 —— `%B` 取消息会多一个换行、时间戳 ISO 换算漏了时区偏移（差 28800 秒）。
-- 修掉 GBK 控制台下的打印崩溃：子进程输出里只要有一个非 UTF-8 字节，
-  解成 `U+FFFD` 后再打印就会 `UnicodeEncodeError`，看起来像构建失败，其实构建是好的。
+- 发布工具：`git push` 不通时自动降级走 GitHub REST（逐个提交重放，每步核对 SHA）；
+  新增 `tools/test_release_meta.py` 对象重建自测，已并入全套测试第 ④ 项。
+- 修掉 Windows GBK 控制台下若干入口脚本的打印崩溃（子进程输出含非 UTF-8 字节所致）。
 
 ---
 
