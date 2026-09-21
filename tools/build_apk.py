@@ -44,6 +44,16 @@ import zipfile
 IS_WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# Windows 控制台默认是 GBK。子进程（aapt2 / javac / d8）只要吐出一个非 UTF-8
+# 字节，`universal_newlines=True` 就会解成 U+FFFD，而 U+FFFD **编不回 GBK** ——
+# 于是脚本在"打印一行日志"上崩掉，跟构建本身毫无关系。
+# 实测崩过：release.py 跑到构建那步 UnicodeEncodeError 退出。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # build-tools 选 30.0.3 的原因：它的 d8 只需要 JDK 8。
 # build-tools 31+ 的 d8 需要 JDK 11，会把整条链路的前置要求抬高。
 BUILD_TOOLS_VERSION = "30.0.3"

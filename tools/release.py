@@ -43,6 +43,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
+# 见 build_apk.py 里的同款处理：GBK 控制台编不出 U+FFFD，
+# 会让脚本死在"打印日志"这一行上。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import build_apk  # noqa: E402  复用 JDK/SDK 探测
 
 REPO = "Xixixiao2007/HA-F1-RaceControl"
