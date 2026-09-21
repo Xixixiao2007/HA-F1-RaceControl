@@ -39,6 +39,8 @@ SOURCES = (
     "MessageStore.java",
     "WsFrame.java",
     "HaWebSocket.java",
+    # GlossDump（e2e 目录里的诊断工具）要用到它
+    "Translator.java",
 )
 
 

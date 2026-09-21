@@ -191,6 +191,9 @@ public final class Classifier {
 
     /**
      * 行背景色（ARGB）。按类型分档，让列表一眼能扫出重点。
+     *
+     * 注意格子旗**不靠颜色**：它用的是 {@link #isCheckered} 让界面画棋盘格。
+     * 这里返回的只是闪动动画的基准色，所以给个中性白。
      */
     public static int color(String kind) {
         if (K_RED.equals(kind)) {
@@ -212,13 +215,13 @@ public final class Classifier {
             return 0xFFEEEEEE;      // 灰
         }
         if (K_CHEQUERED.equals(kind)) {
-            return 0xFFE1F5FE;      // 淡蓝
+            return 0xFFFFFFFF;      // 白（真正的背景是棋盘格，见 isCheckered）
         }
         if (K_GREEN.equals(kind)) {
             return 0xFFE8F5E9;      // 淡绿
         }
         if (K_BLUE.equals(kind)) {
-            return 0xFFF3E5F5;      // 淡紫
+            return 0xFFE3F2FD;      // 淡蓝（蓝旗就该是蓝的；这里一度写成淡紫，用户指出后改回）
         }
         return 0xFFFFFFFF;
     }
@@ -244,14 +247,34 @@ public final class Classifier {
             return 0xFF616161;
         }
         if (K_CHEQUERED.equals(kind)) {
-            return 0xFF0288D1;
+            return 0xFF546E7A;      // 中性深灰（原先是蓝 0xFF0288D1，跟蓝旗撞了；用户指出后改）
         }
         if (K_GREEN.equals(kind)) {
             return 0xFF388E3C;
         }
         if (K_BLUE.equals(kind)) {
-            return 0xFF7B1FA2;
+            return 0xFF1976D2;      // 蓝（原先是紫 0xFF7B1FA2，用户指出后改回）
         }
         return 0xFFBDBDBD;
+    }
+
+    /**
+     * 这一类的行背景是不是要画成**灰白棋盘格**。
+     *
+     * 只有格子旗。字面上就是黑白方格，画出来一眼认得，比给它一个单色准得多
+     * （而且单色一定会跟别的旗撞车 —— 之前就撞成了蓝色）。
+     */
+    public static boolean isCheckered(String kind) {
+        return K_CHEQUERED.equals(kind);
+    }
+
+    /** 棋盘格的浅色格。 */
+    public static int checkerLight() {
+        return 0xFFFFFFFF;
+    }
+
+    /** 棋盘格的深色格。 */
+    public static int checkerDark() {
+        return 0xFFB0BEC5;
     }
 }

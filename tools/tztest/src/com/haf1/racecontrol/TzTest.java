@@ -388,26 +388,113 @@ public class TzTest {
         // ================================================================
         // 7) 过滤
         // ================================================================
-        section("Prefs.isNoise：噪音判定（实测占全部消息 57.7%）");
+        section("Prefs.isNoise：噪音判定（实测隐藏 54.8%、正赛 68.5%）");
+
+        // ---- 真噪音：只有这三类 ----
         eq("蓝旗是噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("BLUE", "Flag", "",
                         "WAVED BLUE FLAG FOR CAR 77 (BOT)"))), Boolean.TRUE);
-        eq("CLEAR 是噪音",
+        eq("扇区解除是噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "7",
                         "CLEAR IN TRACK SECTOR 7"))), Boolean.TRUE);
-        eq("超赛道限制删圈速是噪音",
+        eq("赛道解除是噪音",
+                Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "",
+                        "TRACK CLEAR"))), Boolean.TRUE);
+        eq("删圈速通报是噪音（以 CAR 开头 + 含 DELETED）",
                 Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
                         "CAR 55 (SAI) TIME 1:43.523 DELETED - TRACK LIMITS AT TURN 15"))),
                 Boolean.TRUE);
-        eq("仲裁查完没事是噪音",
+        eq("因双黄旗违规删的圈速也是噪音（旧规则漏了这种）",
                 Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
-                        "FIA STEWARDS: TURN 1 INCIDENT REVIEWED NO FURTHER INVESTIGATION"))),
+                        "CAR 5 (BOR) LAP DELETED - TRACK LIMITS AT TURN 5 LAP 7 (PIT)"))),
                 Boolean.TRUE);
+
+        // ---- 用户点名必须保留的 ----
+        // 早先的规则是"消息里含 TRACK LIMITS 就算删圈速"，于是把黑白旗也吞了：
+        //   BLACK AND WHITE FLAG FOR CAR 44 (HAM) - TRACK LIMITS
+        // 判据从"含短语"改成"认形状"之后，下面这些都不再可能被误吞。
+        section("★ 用户点名必须保留的消息（回归测试）");
+        eq("黑白旗 + TRACK LIMITS（就是被误吞的那 4 条）",
+                Boolean.valueOf(Prefs.isNoise(mk("BLACK AND WHITE", "Flag", "",
+                        "BLACK AND WHITE FLAG FOR CAR 44 (HAM) - TRACK LIMITS"))),
+                Boolean.FALSE);
+        eq("黑白旗 + 未遵守赛会指令",
+                Boolean.valueOf(Prefs.isNoise(mk("BLACK AND WHITE", "Flag", "",
+                        "BLACK AND WHITE FLAG FOR CAR 1 (NOR) - FAILING TO FOLLOW"
+                                + " RACE DIRECTORS INSTRUCTIONS (16:47:39)"))),
+                Boolean.FALSE);
+        eq("事故已记录（离开赛道并获得优势）",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "TURN 1 INCIDENT INVOLVING CAR 3 (VER) NOTED - LEAVING THE TRACK"
+                                + " AND GAINING AN ADVANTAGE"))),
+                Boolean.FALSE);
+        eq("事故已记录（逃生通道）",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "TURN 1 INCIDENT INVOLVING CAR 43 (COL) NOTED - FAILING TO FOLLOW"
+                                + " RACE DIRECTORS INSTRUCTIONS"))),
+                Boolean.FALSE);
+        eq("维修区黄旗",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "", "YELLOW IN PIT LANE"))),
+                Boolean.FALSE);
+        eq("★ 维修区解除（PIT LANE CLEAR）—— 别被 CLEAR 规则吞掉",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "", "PIT LANE CLEAR"))),
+                Boolean.FALSE);
+        eq("会话恢复",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "SESSION WILL RESUME AT 17:47"))),
+                Boolean.FALSE);
+        eq("会话暂停",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "SESSION WILL BE TEMPORARILY STOPPED"))),
+                Boolean.FALSE);
+
+        section("★ 结构性保证：赛会消息不管正文写什么都不会被吞");
+        eq("仲裁「赛后调查」+ TRACK LIMITS（数据里还没有，但必须挡住）",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "FIA STEWARDS: TURN 5 INCIDENT INVOLVING CAR 5 (BOR)"
+                                + " WILL BE INVESTIGATED AFTER THE SESSION - TRACK LIMITS"))),
+                Boolean.FALSE);
+        eq("仲裁「复核不予追究」",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "FIA STEWARDS: TURN 3 INCIDENT INVOLVING CARS 43 (COL) AND 87 (BEA)"
+                                + " REVIEWED NO FURTHER INVESTIGATION - IMPEDING (14:13:45)"))),
+                Boolean.FALSE);
+        eq("仲裁「调查中」",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "FIA STEWARDS: TURN 5 INCIDENT INVOLVING CAR 5 (BOR)"
+                                + " UNDER INVESTIGATION - MOVING UNDER BRAKING"))),
+                Boolean.FALSE);
+        eq("判罚",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "FIA STEWARDS: 5 SECOND TIME PENALTY FOR CAR 55 (SAI) (15:23:42)"))),
+                Boolean.FALSE);
+
+        section("其余该显示的");
         eq("红旗不是噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("RED", "Flag", "", "RED FLAG"))), Boolean.FALSE);
         eq("双黄旗不是噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("DOUBLE YELLOW", "Flag", "12",
                         "DOUBLE YELLOW IN TRACK SECTOR 12"))), Boolean.FALSE);
+
+        section("配色：蓝旗必须是蓝的，格子旗走棋盘格");
+        int blueBar = Classifier.barColor(Classifier.K_BLUE);
+        // 蓝：B 分量最大；紫：R 和 B 都大、B 略大。这里卡住"B 明显大于 R"
+        eq("蓝旗色条偏蓝（B 分量明显大于 R）",
+                Boolean.valueOf(((blueBar >> 16) & 0xFF) < ((blueBar) & 0xFF) - 40),
+                Boolean.TRUE);
+        eq("蓝旗背景也是淡蓝",
+                Boolean.valueOf(((Classifier.color(Classifier.K_BLUE) >> 16) & 0xFF)
+                        < ((Classifier.color(Classifier.K_BLUE)) & 0xFF)),
+                Boolean.TRUE);
+        eq("只有格子旗用棋盘格",
+                Boolean.valueOf(Classifier.isCheckered(Classifier.K_CHEQUERED)), Boolean.TRUE);
+        eq("蓝旗不用棋盘格",
+                Boolean.valueOf(Classifier.isCheckered(Classifier.K_BLUE)), Boolean.FALSE);
+        eq("红旗不用棋盘格",
+                Boolean.valueOf(Classifier.isCheckered(Classifier.K_RED)), Boolean.FALSE);
+        eq("格子旗的色条不再是蓝色",
+                Boolean.valueOf(Classifier.barColor(Classifier.K_CHEQUERED) != 0xFF0288D1),
+                Boolean.TRUE);
 
         section("Prefs.accept：过滤开关与车号筛选");
         Prefs p = new Prefs();

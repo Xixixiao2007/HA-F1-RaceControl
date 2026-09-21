@@ -104,8 +104,8 @@ public class SettingsActivity extends Activity {
         flashBox = check(root, "新消息闪动", p.flashEnabled,
                 "到达的新消息先闪两下再定格配色。历史回填不会闪。");
         noiseBox = check(root, "默认隐藏噪音", p.noiseFilterEnabled,
-                "蓝旗 / 解除 / 超赛道限制删圈速 / 仲裁查完没事。实测占全部消息的 57.7%，"
-                        + "正赛里占 64.6%。");
+                "蓝旗 / 解除 / 删圈速通报。实测占全部消息的 54.8%，"
+                        + "正赛里占 68.5%。");
         carBox = field(root, "只看某辆车（车号）", p.carFilter, "留空 = 不筛选。例如 44。");
         excludeBox = multiline(root, "排除关键词（每行一个）", Prefs.joinLines(p.excludeKeywords),
                 "对消息全文做不区分大小写的子串匹配。");

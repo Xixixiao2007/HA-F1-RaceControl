@@ -224,6 +224,28 @@ public class MainActivity extends Activity {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    // 棋盘格背景（只有格子旗用）。缓存起来复用 —— 无状态，换行不会残留。
+    private CheckerDrawable checkerBodyCache;
+    private CheckerDrawable checkerStripeCache;
+
+    /** 正文区的棋盘格：格子大一点，看得出来是格子。 */
+    private CheckerDrawable checkerBody() {
+        if (checkerBodyCache == null) {
+            checkerBodyCache = new CheckerDrawable(dp(9),
+                    Classifier.checkerLight(), Classifier.checkerDark());
+        }
+        return checkerBodyCache;
+    }
+
+    /** 左侧色条的棋盘格：窄，格子小一点才看得出交替。 */
+    private CheckerDrawable checkerStripe() {
+        if (checkerStripeCache == null) {
+            checkerStripeCache = new CheckerDrawable(dp(4),
+                    Classifier.checkerLight(), Classifier.checkerDark());
+        }
+        return checkerStripeCache;
+    }
+
     // ------------------------------------------------------------------
     // 生命周期
     // ------------------------------------------------------------------
@@ -867,7 +889,14 @@ public class MainActivity extends Activity {
             }
 
             int base = Classifier.color(kind);
-            stripe.setBackgroundColor(Classifier.barColor(kind));
+            final boolean checkered = Classifier.isCheckered(kind);
+
+            if (checkered) {
+                // 格子旗：左侧色条也画成小格，整行一眼就是"格子旗"
+                stripe.setBackgroundDrawable(checkerStripe());
+            } else {
+                stripe.setBackgroundColor(Classifier.barColor(kind));
+            }
 
             if (anim != null) {
                 anim.cancel();
@@ -880,6 +909,7 @@ public class MainActivity extends Activity {
                 anim.setEvaluator(new ArgbEvaluator());
                 anim.setInterpolator(new LinearInterpolator());
                 final Row self = this;
+                final int settled = base;
                 anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                     public void onAnimationUpdate(ValueAnimator a) {
                         Object v = a.getAnimatedValue();
@@ -887,7 +917,23 @@ public class MainActivity extends Activity {
                                 ? ((Integer) v).intValue() : 0xFFFFFFFF);
                     }
                 });
+                // 闪完要还原成"该有的样子" —— 格子旗得回到棋盘格，不能停在纯色上
+                anim.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(android.animation.Animator a) {
+                        self.applyRowBackground(checkered, settled);
+                    }
+                });
                 anim.start();
+            } else {
+                applyRowBackground(checkered, base);
+            }
+        }
+
+        /** 行的背景：格子旗用棋盘格，其余用单色。 */
+        void applyRowBackground(boolean checkered, int base) {
+            if (checkered) {
+                textCol.setBackgroundDrawable(checkerBody());
             } else {
                 textCol.setBackgroundColor(base);
             }

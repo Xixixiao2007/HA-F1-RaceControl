@@ -68,7 +68,7 @@ public class Prefs {
     public boolean flashEnabled = true;
 
     // ---- 过滤 ----
-    /** 默认隐藏噪音（蓝旗 / 解除 / 删除圈速 / 查完没事）。实测省掉 57.7% 的消息。 */
+    /** 默认隐藏噪音。只有三类：蓝旗、解除信号、删圈速通报。实测省掉 54.8% 的消息。 */
     public boolean noiseFilterEnabled = true;
     /** 只看某辆车（车号），空 = 不筛。 */
     public String carFilter = "";
@@ -176,28 +176,65 @@ public class Prefs {
     // ------------------------------------------------------------------
 
     /**
-     * 这条消息是不是"噪音"。
+     * 这条消息是不是「噪音」——默认在「精简」视图里隐藏。
      *
-     * 实测一个比赛周末 697 条消息里 **57.7%** 是噪音；正赛更夸张，**64.6%**
-     * （蓝旗占 42.9%，超赛道限制删圈速占 21.7%）。所以默认过滤不是锦上添花，
-     * 是决定 App 能不能用的东西。
+     * 实测（一个比赛周末 697 条消息）：
+     *   全周末 382/697 = **54.8%**
+     *   正赛   126/184 = **68.5%**   （蓝旗一项就占 42.9%）
+     * 所以默认过滤不是锦上添花，是决定 App 能不能用的东西。
+     *
+     * ## ⚠️ 判据必须是「消息形状」，不能是「消息里含某个短语」
+     * 这里踩过一个坑：原先写的是「消息含 TRACK LIMITS 就算删圈速」。
+     * 结果这条把 **黑白旗** 也吞了 ——
+     *     BLACK AND WHITE FLAG FOR CAR 44 (HAM) - TRACK LIMITS
+     * 它确实提到超赛道限制，但它**不是**删圈速通报，它是给车手的警告（用户指出）。
+     *
+     * 而且这个错误是**结构性**的：赛会消息（`FIA STEWARDS: ...`）和数据通报里
+     * 都可能出现 "TRACK LIMITS" 这个理由。今天恰好没有那样的句子，
+     * 所以赛会调查类侥幸全部可见 —— 但那是运气，不是保证。
+     *
+     * 现在改成认**形状**：删圈速通报一律以 `CAR ` 开头、并且含 `DELETED`
+     * （`CAR 12 (ANT) TIME 1:57.307 DELETED - ...` / `CAR 5 (BOR) LAP DELETED - ...`）。
+     * 这样无论正文提到什么理由，赛会 / 黑白旗 / 事故记录都不可能被误吞。
+     *
+     * 实测这个改法：修掉 4 条误伤的黑白旗，**还多抓 5 条**旧规则漏掉的
+     * （因双黄旗违规删的圈速 —— 它们不含 "TRACK LIMITS"）。纯改进。
+     *
+     * ## 明确不隐藏的
+     * - 黑白旗警告（用户要求）
+     * - 仲裁消息，含「调查开始 / 调查中 / 复核不予追究 / 判罚」全过程（用户要求）
+     * - 任何提到 INCIDENT 的事故记录
+     * - 维修区状态（`YELLOW IN PIT LANE` / `PIT LANE CLEAR`）
+     * - 会话控制（`SESSION WILL RESUME AT ...` / `SESSION WILL BE TEMPORARILY STOPPED`）
+     *
+     * 后两类是用户点名的。它们**今天**本来就没被隐藏，但那是靠数据恰好这么标
+     * (`PIT LANE CLEAR` 的 flag 是空串、不是 `CLEAR`) —— 靠运气不算数。
+     * 这里显式写死，将来上游怎么改措辞都吞不掉。
      */
     public static boolean isNoise(RaceMessage m) {
         if (m == null) {
             return true;
         }
         String kind = Classifier.kind(m);
+
+        // 这两类才是真噪音：被套圈的蓝旗、以及各种解除信号
         if (Classifier.K_BLUE.equals(kind) || Classifier.K_CLEAR.equals(kind)) {
             return true;
         }
+        // 黑白旗和判罚永远不隐藏
+        if (Classifier.K_BW.equals(kind) || Classifier.K_PENALTY.equals(kind)) {
+            return false;
+        }
         String up = m.text().toUpperCase(Locale.US);
-        if (up.indexOf("TRACK LIMITS") >= 0) {
-            return true;
+        // 这些内容永远不隐藏 —— 不管正文里有没有提到"赛道限制""解除"之类的字眼
+        if (up.indexOf("FIA STEWARDS") >= 0
+                || up.indexOf("INCIDENT") >= 0
+                || up.indexOf("PIT LANE") >= 0
+                || up.indexOf("SESSION") >= 0) {
+            return false;
         }
-        if (up.indexOf("LAP DELETED") >= 0) {
-            return true;
-        }
-        if (up.indexOf("NO FURTHER") >= 0) {
+        // 只有「删圈速通报」这个形状才是噪音
+        if (up.startsWith("CAR ") && up.indexOf("DELETED") >= 0) {
             return true;
         }
         return false;
