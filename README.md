@@ -192,38 +192,20 @@ python tools/try_feel.py               # 真机手感测试台：按键就往手
 ```bash
 python tools/release.py                               # 只检查（构建 + 过两道版本号闸门）
 python tools/release.py --publish --notes <说明.md>    # 检查通过后一路发到底
-python tools/release.py --push-only                   # 发完版又改了文档：只推引用，不重发
-python tools/release.py --push-only --no-tag          # 同上，但连标签也不动
+python tools/release.py --push-only                   # 发完版又补了文档：只推引用，不重发
 ```
-
-> `--push-only` 是给「发完版之后又补文档」用的。**别在这种情况下再跑一次
-> `--publish`** —— APK 不是逐字节可复现的，它会重建、重传，Release 说明里
-> 写死的 SHA256 当场作废。补文档不该动任何 Release 资产。
 
 **发版前必须改 `app/AndroidManifest.xml` 的 `versionCode`（每次 +1）和
 `versionName`（patch 位）。** 不改的话 `release.py` 会直接拒绝 —— 有两道闸：
+本地（源码变了但 versionCode 没变）、远端（该版本号已发布过、资产内容又不同）。
 
-1. **本地**：源码变了但 versionCode 没变
-2. **远端**：该版本号已发布过，把远端资产下回来比对后发现内容不一样
+补文档用 `--push-only`。**别在这种情况下再跑 `--publish`**：APK 不是逐字节
+可复现的，它会重建重传，Release 说明里写死的 SHA256 当场作废。
 
-> 为什么要有这个：v2.0.0 期间连着重建了 4 次、每次覆盖同一个 Release 资产，
+> 为什么要有这两道闸：v2.0.0 期间连着重建了 4 次、每次覆盖同一个 Release 资产，
 > 结果 **4 个不同的 APK 全叫 `2.0.0`**（versionCode 都是 1）。
 > 用户分不出自己装的是哪一个，先下载的人手里还是旧文件。
-> 一道闸是纪律，一道是兜底。
-
-### 推不上去的时候
-
-`git push` 走 `github.com`，Git Data API 走 `api.github.com` —— 不是同一条路。
-本机实测过一边全挂、另一边照样通的情况（系统代理一停，`git push` 必然失败）。
-所以 `--publish` 在 `git push` 失败时会**自动降级**：用 Git Data API 把本地提交
-逐个重放，并且每一步都核对 SHA —— blob、tree、commit、tag 全核。
-对不上就直接报错停下，绝不在远端留一个「内容看着对、历史却分叉」的提交。
-
-> 这条路上有两个坑，都踩过并写了自测（`tools/test_release_meta.py`）：
-> `git log --format=%B` 取消息会**在末尾多一个换行**；时间戳按 ISO 格式化时
-> **忘了先按偏移量换算**（`+0800` 的提交整整差 28800 秒）。两者都会让 SHA 对不上。
-> 自测的做法是本地把提交对象拼回去算 SHA，和 `git rev-parse` 逐字节对 ——
-> 不用发网络请求就能拦住这类错。
+> 一道是纪律，一道是兜底。
 
 `tools/mock_ha.py` 是个本地的假 Home Assistant（REST + WebSocket），
 可以**回放 697 条真实比赛消息**，也能跑剧本：`red_flag` / `safety_car` / `vsc` /
