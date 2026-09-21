@@ -568,25 +568,31 @@ public class MainActivity extends Activity {
         store.dropOlderThan(cutoff);
         store.trimTo(prefs.maxStored);
         rebuildShown();
-        adapter.notifyDataSetChanged();
 
-        if (!fresh.isEmpty()) {
-            listView.setSelection(0);
-        }
-
+        // 突发合并：实测峰值 7 条/秒，同一秒到达多条时只闪最新那条、
+        // 也只针对最新那条做提醒（前面几条已经被它代表了）。
+        RaceMessage newest = null;
         if (realtime && !fresh.isEmpty()) {
-            // 突发合并：实测峰值 7 条/秒，同一秒来多条时只闪最新那条
-            RaceMessage newest = fresh.get(fresh.size() - 1);
+            newest = fresh.get(fresh.size() - 1);
             for (int i = 0; i < fresh.size(); i++) {
                 RaceMessage m = fresh.get(i);
                 if (m.time >= newest.time) {
                     newest = m;
                 }
             }
+            // 顺序要紧：必须**先**登记"这一行要闪"，再 notifyDataSetChanged()。
+            // 反过来的话 getView 拿到的 flashing 集合里还没有它，闪动不会发生。
             if (prefs.flashEnabled) {
                 startFlash(newest.key());
             }
-            // 提醒只针对最后一条：前面几条已经被它代表了
+        }
+
+        adapter.notifyDataSetChanged();
+
+        if (!fresh.isEmpty()) {
+            listView.setSelection(0);
+        }
+        if (newest != null) {
             dispatch(newest);
         }
 
