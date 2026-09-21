@@ -31,6 +31,7 @@ import base64
 import hashlib
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -81,7 +82,21 @@ def sh(cmd, env=None, cwd=None, check=True):
 # GitHub REST（只内联本脚本用得上的几个，避免依赖仓库外的工具）
 # ----------------------------------------------------------------------
 
-def gh_call(token, method, url, body=None, raw=None, content_type=None, attempts=4):
+def gh_call(token, method, url, body=None, raw=None, content_type=None,
+            attempts=8, timeout=45):
+    """
+    调一次 GitHub REST，**网络抖动自动重试**。
+
+    为什么参数调成这样（2026-09-21 实测）：
+    发 v2.0.4 时 `api.github.com` 一小时内变成**五次里四次握手被掐**
+    （`SSL: UNEXPECTED_EOF_WHILE_READING` / `RemoteDisconnected` / 握手超时），
+    配额却还剩 5000 —— 纯粹是链路被干扰，不是被限流。
+    原来重试 4 次、每次超时 120 秒：
+      · 4 次连续失败的概率不低（抖动 50% 时约 6%，那天就碰上了）
+      · 而握手卡住时一次要等满 120 秒，重试全跑完能拖十几分钟
+    所以：超时压到 45 秒、重试提到 8 次、退避上限 8 秒并加随机抖动，
+    另外**每次重试都打一行日志** —— 静默重试会把"网络在抖"伪装成"卡住了"。
+    """
     if not url.startswith("http"):
         url = API + url
     data = raw if raw is not None else (
@@ -95,7 +110,7 @@ def gh_call(token, method, url, body=None, raw=None, content_type=None, attempts
         if data is not None:
             req.add_header("Content-Type", content_type or "application/json")
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 b = r.read()
                 return r.status, (json.loads(b) if b else None)
         except urllib.error.HTTPError as e:
@@ -107,7 +122,10 @@ def gh_call(token, method, url, body=None, raw=None, content_type=None, attempts
         except Exception as e:  # 网络抖动
             last = e
             if i < attempts - 1:
-                time.sleep(2.0 * (i + 1))
+                wait = min(2.0 * (i + 1), 8.0) + random.random()
+                print("     [网络抖动 %d/%d] %s -> %.1fs 后重试"
+                      % (i + 1, attempts, str(e)[:70], wait))
+                time.sleep(wait)
     raise last
 
 
