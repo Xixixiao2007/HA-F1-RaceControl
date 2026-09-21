@@ -192,7 +192,13 @@ python tools/try_feel.py               # 真机手感测试台：按键就往手
 ```bash
 python tools/release.py                               # 只检查（构建 + 过两道版本号闸门）
 python tools/release.py --publish --notes <说明.md>    # 检查通过后一路发到底
+python tools/release.py --push-only                   # 发完版又改了文档：只推引用，不重发
+python tools/release.py --push-only --no-tag          # 同上，但连标签也不动
 ```
+
+> `--push-only` 是给「发完版之后又补文档」用的。**别在这种情况下再跑一次
+> `--publish`** —— APK 不是逐字节可复现的，它会重建、重传，Release 说明里
+> 写死的 SHA256 当场作废。补文档不该动任何 Release 资产。
 
 **发版前必须改 `app/AndroidManifest.xml` 的 `versionCode`（每次 +1）和
 `versionName`（patch 位）。** 不改的话 `release.py` 会直接拒绝 —— 有两道闸：

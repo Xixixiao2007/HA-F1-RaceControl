@@ -345,7 +345,7 @@ def _tree_map(rev):
     return out
 
 
-def push_via_api(token, tag):
+def push_via_api(token, tag, move_tag=True):
     """
     代理不可用时的兜底：用 Git Data API 把本地 HEAD 原样推上去。
 
@@ -466,6 +466,20 @@ def push_via_api(token, tag):
     print("     main -> %s [OK]" % head[:8])
 
     # 2) 标签：本地是 annotated tag，tagger 和消息都照抄，SHA 才对得上
+    if not move_tag:
+        print("     （--no-tag：标签保持不动）")
+        return
+    # 幂等：远端标签已经指向这个提交就别重造 —— 否则每跑一次 tag 对象就换一个
+    # （tagger 时间是新的），纯粹是噪音。
+    st, cur = gh_call(token, "GET", "/repos/%s/git/ref/tags/%s" % (REPO, tag))
+    if st == 200:
+        st2, peeled = gh_call(token, "GET", "/repos/%s/git/tags/%s"
+                              % (REPO, cur["object"]["sha"]))
+        target = peeled.get("object", {}).get("sha") if st2 == 200 else cur["object"]["sha"]
+        if target == head:
+            print("     tag %s 已指向该提交，跳过" % tag)
+            return
+
     raw = _git(["cat-file", "-p", "refs/tags/" + tag]).rstrip("\n")
     lines = raw.split("\n")
     tagger_line = next(l for l in lines if l.startswith("tagger "))
@@ -499,12 +513,55 @@ def push_via_api(token, tag):
 
 # ----------------------------------------------------------------------
 
+def push_only(args, tag, code):
+    """
+    只推 main（可选带标签），不构建、不碰 Release。
+
+    发完版之后又想改文档 / 改工具时用它。走的是和 --publish 完全同一条推送通道
+    （`git push` 失败自动降级到 Git Data API），所以该核对的 SHA 一个都不少。
+    """
+    token = os.environ.get("GH_PAT") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise SystemExit("  需要 GH_PAT 环境变量（可用 dsh 的 gh_get_pat.ps1 解析）")
+
+    head = _git(["rev-parse", "HEAD"]).strip()
+    refs = ["main"]
+    if args.no_tag:
+        print("  --no-tag：只推 main")
+    else:
+        # 标签已经指向 HEAD 就别重造：tagger 时间是新的，SHA 会变，纯噪音
+        cur = subprocess.run(["git", "rev-parse", "-q", "--verify", tag + "^{commit}"],
+                             cwd=ROOT, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL).stdout.decode().strip()
+        if cur == head:
+            print("  标签 %s 已在 HEAD 上，不动" % tag)
+        else:
+            sh(["git", "tag", "-d", tag], cwd=ROOT, check=False)
+            sh(["git", "tag", "-a", tag, "-m",
+                "HA-F1-RaceControl %s\n\nversionCode %d。详见 CHANGELOG.md。"
+                % (tag, code)], cwd=ROOT)
+            refs.append("refs/tags/" + tag)
+
+    print()
+    print("  推送 %s ..." % " + ".join(refs))
+    if not git_push(token, refs):
+        push_via_api(token, tag, move_tag=("refs/tags/" + tag) in refs)
+    print()
+    print("  [OK] 已推送（未构建、未改 Release）")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--publish", action="store_true", help="检查通过后真的发布")
     ap.add_argument("--notes", default="", help="Release 说明 markdown 路径")
     ap.add_argument("--force", action="store_true",
                     help="跳过闸门（只在你明确知道自己在干什么时用）")
+    ap.add_argument("--push-only", action="store_true",
+                    help="只推 main（和标签），**不构建、不动 Release** ——"
+                         "发完版又改了文档/工具时用，避免把已发布的 APK 重新构建一遍")
+    ap.add_argument("--no-tag", action="store_true",
+                    help="配合 --push-only：连标签也不动，只推 main")
     args = ap.parse_args()
 
     code, name = read_version()
@@ -514,6 +571,13 @@ def main():
     print("=" * 70)
     print("  版本 : versionCode=%d  versionName=%s   tag=%s" % (code, name, tag))
     print("=" * 70)
+
+    if args.push_only:
+        # 只推引用。为什么需要它：APK **不是逐字节可复现的**，
+        # 发完版之后再跑一次 --publish 会重新构建、重新上传，
+        # 于是 Release 说明里写死的 SHA256 当场作废。
+        # 补文档不该动任何 Release 资产。
+        return push_only(args, tag, code)
 
     src_hash = source_hash()
     print("  源码指纹 : %s" % src_hash[:16])
