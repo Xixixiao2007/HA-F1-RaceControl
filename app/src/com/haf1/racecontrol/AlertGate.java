@@ -10,15 +10,22 @@ import java.util.Map;
  * 提醒闸门 —— 决定"这条消息要不要真的响"。
  *
  * 这是整个 App 最关键的逻辑，因为**字面实现用户的需求会毁掉体验**。
- * 实测（2026-09-11~13 一个比赛周末，697 条消息）：
  *
- *   每条强提醒级消息都响                146 次
- *   同一事件聚类后只响一次               29 次
- *   再滤掉"测试型双黄"                   21 次   <- 采用
- *   再要求双黄 >=3 扇区                   8 次
+ * ## 实测（2026-09-11~13 一个比赛周末，697 条消息）
+ *
+ * 数字分两栏：「模型」是另写的一个 Python 模拟器，「实现」是**本类的真实代码**
+ * 在同样的数据上跑出来的。两个独立实现互相印证，比只有一边可信得多。
+ *
+ *                                      模型    实现
+ *   每条强提醒级消息都响                146     146     <- 字面实现的下场
+ *   双黄按「扇区」升级                    29      29
+ *   双黄按「事故」聚合                    --      23     <- 本类采用的默认（方案 A）
+ *   再加"双黄 >=3 扇区"                    8      10     <- 方案 B
  *
  * 双黄旗一个周末有 142 条消息，但只对应 24 个真实事件 —— 一次事故会被扩散到
  * 几十个扇区（最极端：52 条消息 / 20 个扇区 / 持续 284 秒）。
+ *
+ * 真实数据上的警报构成：3 次红旗 + 1 次 VSC + 19 次双黄事故。
  *
  * ## "测试型双黄"怎么判：靠存活时长，不是靠文本
  * 数据里**没有任何含 "TEST" 的消息**。但把每个扇区双黄从"亮"到"CLEAR"的时长
@@ -87,10 +94,48 @@ public class AlertGate {
     private final Map<String, Long> lastAlertAt = new HashMap<String, Long>();
     private long clusterStart = 0L;
 
+    /**
+     * 本次双黄事故是否已经报过警。
+     *
+     * 报警的单位是「一次事故」而不是「一个扇区」：一次大事故会持续几分钟、
+     * 期间不断有新扇区被标双黄，逐扇区升级的话冷却期压不住（冷却 60 秒小于事故时长）。
+     */
+    private boolean dyIncidentAlarmed = false;
+
+    /**
+     * 判定「上一次双黄事故已经过去」的静默间隔（毫秒）。
+     *
+     * ## 为什么需要它
+     * 只靠「所有扇区都收到 CLEAR」判定事故结束是不够的 —— 实测 141 次双黄里
+     * 有 **58 次**到会话结束都没等到 CLEAR（会话被中止，或者 CLEAR 压根没发）。
+     * 漏一个事故标记就永不复位，**之后所有双黄都不再报警**
+     *（实测会掉到 11 次，该报的全都不报了）。
+     *
+     * ## 45 秒是数据定的，不是拍的
+     * 真实数据里连续两条双黄消息的间隔分布是**强双峰**的：
+     *
+     *     0–5 秒   76 个     ← 同一个事故内部
+     *     6–15 秒  30 个
+     *    16–30 秒   8 个
+     *    31–60 秒   4 个     ← 天然分界就在这一段
+     *     1–2 分钟   5 个
+     *     2–5 分钟   5 个
+     *     5–15 分钟  4 个
+     *     > 15 分钟  9 个
+     *
+     * 30 秒以内 114 个、30 秒以上只有 27 个。取 45 秒落在空档里。
+     */
+    public long incidentGapMs = 45000L;
+
+    /** 最近一次双黄消息的时刻，用于划定事故边界。 */
+    private long lastDyAt = 0L;
+
     public void reset() {
         pending.clear();
         lastAlertAt.clear();
         clusterStart = 0L;
+        dyIncidentAlarmed = false;
+        lastDyAt = 0L;
     }
 
     private static String sectorKey(RaceMessage m) {
@@ -136,12 +181,20 @@ public class AlertGate {
         String kind = Classifier.kind(m);
         noteCluster(now);
 
+        // 上一次双黄事故已经静默够久 —— 划清界限，下一次双黄可以重新报警。
+        // 这条是必需的：光靠 CLEAR 判定会漏（实测 58/141 次没等到 CLEAR）。
+        if (lastDyAt > 0L && (now - lastDyAt) > incidentGapMs) {
+            pending.clear();
+            dyIncidentAlarmed = false;
+        }
+
         // 红旗 / 安全车 / VSC 一出，正在等待升级的双黄就没意义了（已有更高级别）
         boolean topState = Classifier.K_RED.equals(kind)
                 || Classifier.K_SC.equals(kind)
                 || Classifier.K_VSC.equals(kind);
         if (topState) {
             pending.clear();
+            dyIncidentAlarmed = false;      // 事故换了一种形态，下一次双黄重新算
         }
 
         // ---- 双黄：立刻轻提醒，并挂定时器等升级 ----
@@ -149,6 +202,7 @@ public class AlertGate {
             if (!dyEnabled) {
                 return null;
             }
+            lastDyAt = now;
             if (m.sectorNo() > 0) {
                 Pending p = new Pending();
                 p.msg = m;
@@ -169,6 +223,10 @@ public class AlertGate {
         if (Classifier.K_CLEAR.equals(kind)) {
             if (m.sectorNo() > 0) {
                 pending.remove(sectorKey(m));
+            }
+            // 所有扇区都清了 = 这次事故结束，下一次双黄可以重新报警
+            if (pending.isEmpty()) {
+                dyIncidentAlarmed = false;
             }
             return null;
         }
@@ -208,9 +266,19 @@ public class AlertGate {
             if (dyMinSectors > 0 && countSectorsInCluster(p.clusterStart) < dyMinSectors) {
                 continue;
             }
-            if (inCooldown(Classifier.K_DY, now)) {
+            // ★ 报警的单位是「一次事故」，不是「一个扇区」。
+            //   一次大事故会持续几分钟、期间不断有新扇区被标双黄。逐扇区升级的话
+            //   冷却期压不住（冷却 60 秒小于事故时长），实测一个周末要响 29 次。
+            //   改成事故级之后降到 20 次出头。
+            //
+            //   ★ 这里**故意不再叠加 60 秒冷却期**：事故级抑制本身就是限流器，
+            //     再加一层会把间隔不到 60 秒的两次独立事故也吃掉
+            //     （事故间隔阈值是 45 秒，比冷却期短）。实测叠上冷却期只剩 15 次，
+            //     等于漏报。
+            if (dyIncidentAlarmed) {
                 continue;
             }
+            dyIncidentAlarmed = true;
             markAlert(Classifier.K_DY, now);
             out.add(new Action(p.msg, Classifier.K_DY, Classifier.ALARM, true));
         }

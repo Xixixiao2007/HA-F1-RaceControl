@@ -54,8 +54,8 @@ public class SettingsActivity extends Activity {
     private static final String[] DY_LABELS = {
             "双黄旗：只闪动，不提醒",
             "双黄旗：只轻提醒（不升级）",
-            "双黄旗：轻提醒 + 持续超时升级（推荐，约 21 次/周末）",
-            "双黄旗：轻提醒 + 仅大面积（≥3 扇区）升级（约 8 次/周末）",
+            "双黄旗：轻提醒 + 持续超时升级（推荐，实测约 23 次/周末）",
+            "双黄旗：轻提醒 + 仅大面积（≥3 扇区）升级（实测约 10 次/周末）",
     };
 
     @Override

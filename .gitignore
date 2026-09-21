@@ -17,8 +17,12 @@ android-sdk/
 _dl_cache/
 
 # 测试中间产物
+# 注意：.gitignore **不支持行内注释** —— 模式后面跟的 # 会被当成模式的一部分。
+# 所以注释只能单独占一行。
 tools/tztest/out/
 tools/tztest/javac.args
+tools/tztest/e2eout/
+tools/tztest/e2e.args
 
 # Python
 __pycache__/

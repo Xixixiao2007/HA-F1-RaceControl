@@ -26,9 +26,9 @@ public class Prefs {
     public static final int DY_OFF = 0;
     /** 只给轻提醒，不升级。 */
     public static final int DY_SOFT = 1;
-    /** 轻提醒 + 存活超过 dyEscalateSec 才升级为强提醒。实测 21 次/周末。 */
+    /** 轻提醒 + 存活超过 dyEscalateSec 才升级为强提醒。实测 23 次/周末。 */
     public static final int DY_ESCALATE = 2;
-    /** 同上，但还要求同时 >=3 个扇区。实测 8 次/周末，会漏掉局部事故。 */
+    /** 同上，但还要求同时 >=3 个扇区。实测 10 次/周末，会漏掉局部事故。 */
     public static final int DY_ESCALATE_BIG = 3;
 
     public static final int POLL_MIN = 1;
