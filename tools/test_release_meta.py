@@ -37,7 +37,12 @@ import re
 import subprocess
 import sys
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+# Windows 控制台默认可能是 GBK：这里要打中文提交信息，不换编码会自己崩在 print 上。
+for _stream in ("stdout", "stderr"):
+    try:
+        getattr(sys, _stream).reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)

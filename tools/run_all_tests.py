@@ -25,6 +25,15 @@ import time
 import urllib.error
 import urllib.request
 
+# Windows 控制台默认可能是 GBK：子进程（单测 / 端到端 / javac）的输出里只要有一个
+# GBK 编不出的字符，这里的 print 就会 UnicodeEncodeError，把整个测试跑挂 ——
+# 看着像"测试失败"，其实是打印挂了（实测被 \u0368 这种组合附加符号干掉过一次）。
+for _stream in ("stdout", "stderr"):
+    try:
+        getattr(sys, _stream).reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PY = sys.executable

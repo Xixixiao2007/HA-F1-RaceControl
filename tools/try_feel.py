@@ -24,6 +24,14 @@ import time
 import urllib.error
 import urllib.request
 
+# Windows 控制台默认可能是 GBK：这里要往屏幕上打真实比赛消息（可能有 GBK 编不出的字符），
+# 不换编码就会在自己打印数据的那一步崩掉。
+for _stream in ("stdout", "stderr"):
+    try:
+        getattr(sys, _stream).reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PY = sys.executable

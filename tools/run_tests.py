@@ -16,6 +16,14 @@ import shutil
 import subprocess
 import sys
 
+# Windows 控制台默认可能是 GBK：JVM 的输出里只要有一个 GBK 编不出的字符，
+# print 就会 UnicodeEncodeError 把测试跑挂（看着像测试失败）。
+for _stream in ("stdout", "stderr"):
+    try:
+        getattr(sys, _stream).reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
