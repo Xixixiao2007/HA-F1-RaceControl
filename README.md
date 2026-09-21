@@ -160,7 +160,8 @@ flag=""   category="SafetyCar"   message="VSC DEPLOYED"
 python tools/fetch_sdk.py              # 首次：下载最小 Android 工具集（约 236 MB）
 python tools/run_tests.py              # 桌面单测（117 项）
 python tools/build_apk.py              # 构建 APK
-python tools/mock_ha.py --scenario vsc # 起一个假 HA，用真实比赛数据回放
+python tools/run_all_tests.py            # 全套测试（单元 + mock 自测 + 端到端）
+python tools/try_feel.py                 # 真机手感测试台：按键就往手机推一段剧本
 ```
 
 `tools/mock_ha.py` 是个本地的假 Home Assistant（REST + WebSocket），
