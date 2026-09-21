@@ -156,6 +156,20 @@ def main():
                 summary = l.strip()
         results.append(("③ " + name, code == 0, summary))
 
+    # ---------- ④ 发布工具：对象重建自测 ----------
+    print()
+    print("=" * 74)
+    print("④ 发布工具对象重建自测 (tools/test_release_meta.py)")
+    print("=" * 74)
+    code, out = run([PY, os.path.join(HERE, "test_release_meta.py")], timeout=300)
+    for l in tail(out, 4):
+        print("   " + l)
+    summary = ""
+    for l in out.splitlines():
+        if "对象重建自测：共" in l:
+            summary = l.strip()
+    results.append(("④ 发布工具自测", code == 0, summary))
+
     # ---------- 汇总 ----------
     print()
     print("=" * 74)
