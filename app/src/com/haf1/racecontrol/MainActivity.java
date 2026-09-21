@@ -231,6 +231,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        handler.removeCallbacks(pauseStopTask);   // 回来了，取消"宽限期结束就断开"
         prefs = Prefs.load(this);
         prefs.applyTo(gate);
 
@@ -268,18 +269,47 @@ public class MainActivity extends Activity {
         handler.post(tickTask);
     }
 
+    /**
+     * 离开界面后，数据通道还保持多久（毫秒）。
+     *
+     * 为什么不能一 onPause 就断开：
+     *   1. **强提醒本身是个独立 Activity** —— 它一弹出来，主页就 onPause。
+     *      如果这时断开 WebSocket，恰恰是在红旗期间掉线，最不该断的时刻。
+     *   2. **屏幕熄灭时 App 会暂停。** 比赛时手机多半是锁屏放在桌上，
+     *      要是暂停就断线，红旗根本不会响 —— 那就完全违背了这个 App 的用途。
+     *
+     * 所以给一个宽限期：短时间内离开（弹提醒、切出去看一眼）保持连接；
+     * 长时间真的不用了才断开，免得白耗电。
+     *
+     * 已知局限：Android 6 引入了 Doze，长时间静止+熄屏后会限制网络。
+     * 要做到"锁屏几小时也必定收到红旗"，正规做法是把数据通道放进
+     * 前台 Service（带常驻通知）。那是下一步的事，现在先用宽限期。
+     */
+    private static final long PAUSE_GRACE_MS = 30 * 60 * 1000L;
+
+    private final Runnable pauseStopTask = new Runnable() {
+        public void run() {
+            stopRealtime();
+            stopPolling();
+            handler.removeCallbacks(tickTask);
+            saveStore();
+        }
+    };
+
     @Override
     protected void onPause() {
         super.onPause();
-        stopRealtime();
-        stopPolling();
-        handler.removeCallbacks(tickTask);
+        // 先落盘（便宜），数据通道留到宽限期结束再关
         saveStore();
+        handler.removeCallbacks(pauseStopTask);
+        handler.postDelayed(pauseStopTask, PAUSE_GRACE_MS);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        handler.removeCallbacks(pauseStopTask);
+        handler.removeCallbacks(tickTask);
         stopRealtime();
         stopPolling();
         if (notifier != null) {
