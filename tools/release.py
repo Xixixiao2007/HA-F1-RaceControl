@@ -31,6 +31,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -242,14 +243,164 @@ def gate_remote(token, name, apk_sha):
 # ----------------------------------------------------------------------
 
 def git_push(token, refs):
-    """沙箱里 credential.helper 必然死在命名管道上，用 extraHeader 注入认证。"""
+    """先走正常 git 通道；不通就自动降级走 GitHub REST。"""
     b64 = base64.b64encode(("x-access-token:" + token).encode("ascii")).decode("ascii")
     env = dict(os.environ)
     env["GIT_CONFIG_COUNT"] = "1"
     env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
     env["GIT_CONFIG_VALUE_0"] = "Authorization: Basic " + b64
     for ref in refs:
-        sh(["git", "-c", "credential.helper=", "push", "origin", ref], env=env, cwd=ROOT)
+        p = sh(["git", "-c", "credential.helper=", "push", "origin", ref],
+               env=env, cwd=ROOT, check=False)
+        if p.returncode != 0:
+            print()
+            print("  [!] git push 失败（多半是代理挂了 / github.com 被丢包）")
+            print("      -> 降级走 GitHub REST（api.github.com 通常还是通的）")
+            return False
+    return True
+
+
+# ----------------------------------------------------------------------
+# 兜底通道：完全绕开 git，用 Git Data API 推
+# ----------------------------------------------------------------------
+
+def _git(args):
+    p = subprocess.run(["git"] + args, cwd=ROOT, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, universal_newlines=True,
+                       encoding="utf-8", errors="replace")
+    if p.returncode != 0:
+        raise SystemExit("git %s 失败: %s" % (" ".join(args), p.stdout))
+    return p.stdout
+
+
+def push_via_api(token, tag):
+    """
+    代理不可用时的兜底：用 Git Data API 把本地 HEAD 原样推上去。
+
+    为什么值得写：`git push` 走 github.com（这个 IP 在部分网络下被丢包），
+    而 `api.github.com` 通常还是通的。两者不是同一条路。
+
+    ## 关键点：推上去的 commit SHA 必须和本地**完全一样**
+    不是"内容一样"就行 —— 我把本地 commit 的 tree / parent / author / committer /
+    message 原样交给 API，GitHub 算出来的 SHA 就会和本地一致。
+    这样本地和远端不会分叉，也就不需要事后 reset。
+    blob 也一样：上传后 API 返回的 SHA 必须等于 `git ls-tree` 给出的 SHA，
+    不等就说明内容变了，直接报错（这是比"上传成功"硬得多的证据）。
+    """
+    # 1) 本地 HEAD 的完整信息
+    head = _git(["rev-parse", "HEAD"]).strip()
+    tree_sha = _git(["rev-parse", "HEAD^{tree}"]).strip()
+    parents = _git(["rev-list", "--parents", "-n", "1", "HEAD"]).split()[1:]
+    raw = _git(["log", "-1", "--format=%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B"])
+    parts = raw.split("\x00")
+    an, ae, ad, cn, ce, cd = parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
+    message = parts[6]
+    print("     本地 HEAD %s（%d 个父提交）" % (head[:8], len(parents)))
+
+    # 2) 远端现在是什么
+    st, ref = gh_call(token, "GET", "/repos/%s/git/ref/heads/main" % REPO)
+    if st != 200:
+        raise SystemExit("  读远端 main 失败 HTTP %s" % st)
+    remote_sha = ref["object"]["sha"]
+    if remote_sha == head:
+        print("     远端已经是这个 commit，无需推送")
+        return
+    st, rc = gh_call(token, "GET", "/repos/%s/git/commits/%s" % (REPO, remote_sha))
+    remote_tree = rc["tree"]["sha"]
+    st, rt = gh_call(token, "GET",
+                     "/repos/%s/git/trees/%s?recursive=1" % (REPO, remote_tree))
+    remote_blobs = {i["path"]: i["sha"] for i in rt.get("tree", []) if i["type"] == "blob"}
+    print("     远端 main %s，%d 个文件" % (remote_sha[:8], len(remote_blobs)))
+
+    # 3) 本地全部文件
+    local = {}
+    for line in _git(["ls-tree", "-r", "HEAD"]).splitlines():
+        if not line.strip():
+            continue
+        meta, path = line.split("\t", 1)
+        mode, typ, sha = meta.split()
+        local[path] = (sha, mode)
+
+    # 4) 只传变了的 blob，并**逐个核对 SHA**
+    entries = []
+    uploaded = 0
+    for path, (sha, mode) in sorted(local.items()):
+        if remote_blobs.get(path) == sha:
+            continue
+        with open(os.path.join(ROOT, path), "rb") as f:
+            data = f.read()
+        st, blob = gh_call(token, "POST", "/repos/%s/git/blobs" % REPO,
+                           body={"content": base64.b64encode(data).decode("ascii"),
+                                 "encoding": "base64"})
+        if st != 201:
+            raise SystemExit("  上传 blob 失败 %s HTTP %s: %s" % (path, st, blob))
+        if blob["sha"] != sha:
+            raise SystemExit("  [FAIL] %s 上传后 SHA 不符：本地 %s / 远端 %s"
+                             % (path, sha, blob["sha"]))
+        entries.append({"path": path, "mode": mode, "type": "blob", "sha": sha})
+        uploaded += 1
+    # 远端有、本地没有的 -> 删掉
+    for path in remote_blobs:
+        if path not in local:
+            entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
+            print("     删除远端多出的文件: %s" % path)
+    print("     上传 %d 个 blob（其余 %d 个远端已有）"
+          % (uploaded, len(local) - uploaded))
+
+    # 5) 造 tree + commit（字段照抄本地，SHA 才会一致）
+    st, nt = gh_call(token, "POST", "/repos/%s/git/trees" % REPO,
+                     body={"base_tree": remote_tree, "tree": entries})
+    if st != 201:
+        raise SystemExit("  建 tree 失败 HTTP %s: %s" % (st, nt))
+    if nt["sha"] != tree_sha:
+        raise SystemExit("  [FAIL] 远端 tree 与本地不一致：本地 %s / 远端 %s"
+                         % (tree_sha, nt["sha"]))
+    print("     tree %s [OK] 与本地一致" % nt["sha"][:8])
+
+    st, nc = gh_call(token, "POST", "/repos/%s/git/commits" % REPO, body={
+        "message": message, "tree": tree_sha, "parents": parents,
+        "author": {"name": an, "email": ae, "date": ad},
+        "committer": {"name": cn, "email": ce, "date": cd}})
+    if st != 201:
+        raise SystemExit("  建 commit 失败 HTTP %s: %s" % (st, nc))
+    if nc["sha"] != head:
+        raise SystemExit("  [FAIL] 远端 commit 与本地不一致：本地 %s / 远端 %s\n"
+                         "     内容是对的，但 SHA 不同 —— 请检查 author/committer 字段"
+                         % (head, nc["sha"]))
+    print("     commit %s [OK] 与本地一致" % nc["sha"][:8])
+
+    st, _ = gh_call(token, "PATCH", "/repos/%s/git/refs/heads/main" % REPO,
+                    body={"sha": head, "force": False})
+    if st != 200:
+        raise SystemExit("  更新 main 失败 HTTP %s" % st)
+    print("     main -> %s" % head[:8])
+
+    # 6) 标签：本地是 annotated tag，tagger 和消息都照抄，SHA 才对得上
+    raw = _git(["cat-file", "-p", "refs/tags/" + tag]).rstrip("\n")
+    lines = raw.split("\n")
+    tagger_line = next(l for l in lines if l.startswith("tagger "))
+    empty = lines.index("")                     # tagger 与消息之间的那个空行
+    tag_msg = "\n".join(lines[empty + 1:]) + "\n"
+    tm = re.match(r"^tagger (.*) <(.*)> (\d+) ([+-]\d{4})$", tagger_line)
+    off = tm.group(4)
+    tagger = {"name": tm.group(1), "email": tm.group(2),
+              "date": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(int(tm.group(3))))
+                      + off[:3] + ":" + off[3:]}
+    local_tag_sha = _git(["rev-parse", "refs/tags/" + tag]).strip()
+    st, nt2 = gh_call(token, "POST", "/repos/%s/git/tags" % REPO, body={
+        "tag": tag, "message": tag_msg, "object": head, "type": "commit",
+        "tagger": tagger})
+    if st != 201:
+        raise SystemExit("  建 tag 对象失败 HTTP %s: %s" % (st, nt2))
+    st, _ = gh_call(token, "POST", "/repos/%s/git/refs" % REPO,
+                    body={"ref": "refs/tags/" + tag, "sha": nt2["sha"]})
+    if st not in (201, 422):
+        raise SystemExit("  建 tag ref 失败 HTTP %s" % st)
+    print("     tag %s -> %s%s" % (tag, nt2["sha"][:8],
+                                   "  [OK] 与本地一致" if nt2["sha"] == local_tag_sha
+                                   else "  [注意] 本地是 %s（内容一致即正常）"
+                                        % local_tag_sha[:8]))
+
 
 
 # ----------------------------------------------------------------------
@@ -305,7 +456,8 @@ def main():
     sh(["git", "tag", "-a", tag, "-m",
         "HA-F1-RaceControl %s\n\nversionCode %d。详见 CHANGELOG.md。" % (tag, code)],
        cwd=ROOT)
-    git_push(token, ["main", "refs/tags/" + tag])
+    if not git_push(token, ["main", "refs/tags/" + tag]):
+        push_via_api(token, tag)
 
     # ---- 发 Release ----
     print()
