@@ -6,7 +6,7 @@
 噪音默认过滤掉。
 
 给 **Android 6.0 老设备**做的：不经过 WebView、不依赖 Google 服务、零第三方依赖，
-APK 只有 **57 KB**（58,070 字节）。
+APK 只有 **60 KB 出头**。
 
 > 这是 [`Android_HA_Viewer`](https://github.com/Xixixiao2007/Android_HA_Viewer) 的
 > 特化分支。上一代是通用的「任意实体变化流水」，这一代只服务 F1 赛事控制。
