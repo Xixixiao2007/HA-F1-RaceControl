@@ -1,6 +1,10 @@
 package com.haf1.racecontrol;
 
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.RingtoneManager;
@@ -9,7 +13,7 @@ import android.net.Uri;
 import android.os.Vibrator;
 
 /**
- * 提醒执行器：声音 + 震动。
+ * 提醒执行器：声音 + 震动 + 通知栏。
  *
  * ## 两种级别
  * - **轻提醒**（黄旗 / 黑白旗 / 双黄旗刚出现）：一声短音 + 一短震，走通知通道。
@@ -37,6 +41,83 @@ public class Notifier {
             vibrator = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
         } catch (Throwable ignored) {
             vibrator = null;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 通知栏
+    // ------------------------------------------------------------------
+
+    private static final int NOTIFY_ID = 0x51F1;      // "F1" 的十六进制 + 前缀
+
+    /**
+     * 往通知栏推一条强提醒，**锁屏可见**。
+     *
+     * 为什么全屏横幅之外还要这个：
+     *   全屏横幅（{@link AlertActivity}）负责"当场叫醒你"，但它是转瞬即逝的 ——
+     *   你要是正好没看手机，回头完全不知道刚才响过什么。通知栏这条会留在那里，
+     *   下拉就能看到是哪条旗语。锁屏上也能看到（`VISIBILITY_PUBLIC`）。
+     *
+     * 用 `PRIORITY_HIGH` 让它在锁屏上方显示。targetSdk 是 23，
+     * 不需要通知渠道（渠道是 API 26 才有的）。
+     */
+    public void pushNotification(String kind, String text, RaceMessage msg, Prefs p) {
+        try {
+            NotificationManager nm = (NotificationManager)
+                    ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) {
+                return;
+            }
+            Intent open = new Intent(ctx, AlertActivity.class);
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            open.putExtra(AlertActivity.EXTRA_KIND, kind);
+            open.putExtra(AlertActivity.EXTRA_TEXT, text);
+            if (msg != null) {
+                open.putExtra(AlertActivity.EXTRA_TIME, msg.time);
+                open.putExtra(AlertActivity.EXTRA_SECTOR, msg.sector);
+                open.putExtra(AlertActivity.EXTRA_CAR, msg.carNumber);
+            }
+            // 自动停止秒数设 0：从通知点进去的这一次不该自己消失
+            open.putExtra(AlertActivity.EXTRA_AUTOSTOP, 0);
+            open.putExtra(AlertActivity.EXTRA_SOUND, false);     // 通知点开时别再响一遍
+            open.putExtra(AlertActivity.EXTRA_VIBRATE, false);
+            PendingIntent pi = PendingIntent.getActivity(ctx, 0, open,
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+
+            String title = "F1 " + Classifier.label(kind);
+            StringBuilder body = new StringBuilder(text == null ? "" : text);
+            if (msg != null && msg.sector != null && msg.sector.length() > 0) {
+                body.append("  ·  扇区 ").append(msg.sector);
+            }
+
+            Notification n = new Notification.Builder(ctx)
+                    .setSmallIcon(android.R.drawable.stat_sys_warning)
+                    .setContentTitle(title)
+                    .setContentText(body.toString())
+                    .setStyle(new Notification.BigTextStyle().bigText(body.toString()))
+                    .setPriority(Notification.PRIORITY_HIGH)
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
+                    .setCategory(Notification.CATEGORY_ALARM)
+                    .setDefaults(0)                    // 声音震动由本类自己放，不要系统再放一遍
+                    .setAutoCancel(true)
+                    .setContentIntent(pi)
+                    .build();
+            nm.notify(NOTIFY_ID, n);
+        } catch (Throwable ignored) {
+            // 通知发不出去不能影响主流程（全屏横幅还是会弹）
+        }
+    }
+
+    /** 撤掉通知栏那条。 */
+    public void clearNotification() {
+        try {
+            NotificationManager nm = (NotificationManager)
+                    ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(NOTIFY_ID);
+            }
+        } catch (Throwable ignored) {
+            // ignore
         }
     }
 

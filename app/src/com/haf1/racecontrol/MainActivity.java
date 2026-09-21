@@ -626,6 +626,9 @@ public class MainActivity extends Activity {
         if (a.severity >= Classifier.ALARM) {
             if (notifier != null) {
                 notifier.stopAlarm();       // 交给 AlertActivity 播，避免两路声音叠加
+                // 全屏横幅只管"当场叫醒"，通知栏那条负责"事后还查得到"。
+                // 两个都要：横幅一闪而过，你要是正好没看手机就什么都不知道了。
+                notifier.pushNotification(a.kind, m(a.msg), a.msg, prefs);
             }
             AlertActivity.show(this, a.kind, m(a.msg), a.msg.time,
                     a.msg.sector, a.msg.carNumber, a.escalated, prefs);
