@@ -177,7 +177,7 @@ public class AlertActivity extends Activity {
             meta.append("持续未解除 · ");
         }
         if (sector != null && sector.length() > 0) {
-            meta.append("扇区 ").append(sector).append(" · ");
+            meta.append("区段 ").append(sector).append(" · ");
         }
         if (car != null && car.length() > 0) {
             meta.append("车号 ").append(car).append(" · ");

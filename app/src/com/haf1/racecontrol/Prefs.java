@@ -28,7 +28,7 @@ public class Prefs {
     public static final int DY_SOFT = 1;
     /** 轻提醒 + 存活超过 dyEscalateSec 才升级为强提醒。实测 23 次/周末。 */
     public static final int DY_ESCALATE = 2;
-    /** 同上，但还要求同时 >=3 个扇区。实测 10 次/周末，会漏掉局部事故。 */
+    /** 同上，但还要求同时 >=3 个区段。实测 10 次/周末，会漏掉局部事故。 */
     public static final int DY_ESCALATE_BIG = 3;
 
     public static final int POLL_MIN = 1;
@@ -58,7 +58,7 @@ public class Prefs {
     public int cooldownSec = 60;
     /** 双黄存活超过多少秒才算真事件（用来判定"测试型"）。 */
     public int dyEscalateSec = 15;
-    /** 双黄升级所需的最少扇区数；0 = 不启用。 */
+    /** 双黄升级所需的最少区段数；0 = 不启用。 */
     public int dyMinSectors = 0;
     /** 双黄策略，见 DY_* 常量。 */
     public int dyMode = DY_ESCALATE;

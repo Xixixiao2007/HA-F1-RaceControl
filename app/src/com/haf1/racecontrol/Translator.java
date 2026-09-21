@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  *     FIA STEWARDS: TURN 1 INCIDENT INVOLVING CAR 5 (BOR) NOTED -
  *     FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – ESCAPE ROAD INSTRUCTIONS (14:27:29)
  *
- * 比赛时根本没空读。翻成「1 号弯事故（博尔托莱托）：已记录 —— 未遵守赛会指令（逃生通道）」
+ * 比赛时根本没空读。翻成「1 号弯事故（博托莱托）：已记录 —— 未遵守赛会指令（逃生通道）」
  * 一眼就懂。尤其是**判罚**：谁被罚、罚多少、为什么，这三件事必须能秒读。
  *
  * ## 规则是从真实数据里反推的，不是编的
@@ -47,7 +47,11 @@ public final class Translator {
     private static final Pattern CAR = Pattern.compile("(\\d{1,2})\\s*\\(([A-Z]{3})\\)");
     private static final Pattern TURN = Pattern.compile("TURN\\s+(\\d+)");
     private static final Pattern LAP = Pattern.compile("LAP\\s+(\\d+)");
+    private static final Pattern SECTOR = Pattern.compile("SECTOR\\s+(\\d+)");
     private static final Pattern SECONDS = Pattern.compile("(\\d+)\\s*SECOND");
+    /** 排位赛阶段。真实数据里有 `FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA), ...` —— */
+    private static final Pattern PHASE = Pattern.compile("\\b(Q[123])\\b");
+    private static final Pattern RAIN = Pattern.compile("RISK OF RAIN FOR (.+?) IS (\\d+)%");
 
     /** 三位缩写 -> 中文姓氏。用数据里实际出现过的车手，查不到就退回缩写。 */
     private static final Map<String, String> DRIVERS = new HashMap<String, String>();
@@ -55,7 +59,7 @@ public final class Translator {
     static {
         DRIVERS.put("VER", "维斯塔潘");
         DRIVERS.put("NOR", "诺里斯");
-        DRIVERS.put("PIA", "皮亚斯特里");
+        DRIVERS.put("PIA", "皮亚");
         DRIVERS.put("LEC", "勒克莱尔");
         DRIVERS.put("HAM", "汉密尔顿");
         DRIVERS.put("RUS", "拉塞尔");
@@ -71,8 +75,8 @@ public final class Translator {
         DRIVERS.put("BEA", "比尔曼");
         DRIVERS.put("COL", "科拉平托");
         DRIVERS.put("ANT", "安东内利");
-        DRIVERS.put("LIN", "林德布拉德");
-        DRIVERS.put("BOR", "博尔托莱托");
+        DRIVERS.put("LIN", "林布拉德");
+        DRIVERS.put("BOR", "博托莱托");
         DRIVERS.put("PER", "佩雷兹");
         DRIVERS.put("MAG", "马格努森");
         DRIVERS.put("RIC", "里卡多");
@@ -84,10 +88,23 @@ public final class Translator {
         DRIVERS.put("HAD", "哈贾尔");
     }
 
-    /** 处置原因 -> 中文。按长度降序匹配，避免短串抢先。 */
+    /**
+     * 处置原因 -> 中文。**按长度降序匹配**，长串必须排在短串前面，
+     * 否则短串会抢先吃掉长串的前半截。
+     *
+     * ★ 复合原因（真实数据里就有的形状，别当成罕见情况）：
+     *     FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – ESCAPE ROAD INSTRUCTIONS
+     *     FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - MAXIMUM DELTA TIME
+     *   连字符后面那半截是**对前半截的限定**（没遵守的是哪一条指令），
+     *   所以整条翻成「未遵守赛会指令（逃生通道）」，而不是把后半截丢掉。
+     *   只写这几条显式条目就够了 —— 万一将来出现新措辞，
+     *   匹配到前半截仍是**正确但不完整**的译文，不会翻错。
+     */
     private static final String[][] REASONS = {
             {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – ESCAPE ROAD INSTRUCTIONS", "未遵守赛会指令（逃生通道）"},
             {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - ESCAPE ROAD INSTRUCTIONS", "未遵守赛会指令（逃生通道）"},
+            {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – MAXIMUM DELTA TIME", "未遵守赛会指令（超出最大圈速差）"},
+            {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - MAXIMUM DELTA TIME", "未遵守赛会指令（超出最大圈速差）"},
             {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS", "未遵守赛会指令"},
             {"LEAVING THE TRACK AND GAINING AN ADVANTAGE", "离开赛道并获得优势"},
             {"FORCING ANOTHER DRIVER OFF THE TRACK", "把对手逼出赛道"},
@@ -139,7 +156,7 @@ public final class Translator {
         if (g != null) {
             return g;
         }
-        return null;
+        return other(up);
     }
 
     // ------------------------------------------------------------------
@@ -187,21 +204,31 @@ public final class Translator {
     /**
      * 仲裁裁决。真实模板：
      *   FIA STEWARDS: TURN 1 INCIDENT INVOLVING CAR 5 (BOR) REVIEWED NO FURTHER INVESTIGATION - <原因> (ts)
+     *   FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA), ... AND 77 (BOT) NO FURTHER ACTION - <原因>
      *   FIA STEWARDS: TURN 5 INCIDENT INVOLVING CAR 77 (BOT) WILL BE INVESTIGATED AFTER THE SESSION - <原因> (ts)
      *   FIA STEWARDS: TURN 5 INCIDENT INVOLVING CAR 5 (BOR) UNDER INVESTIGATION - <原因> (ts)
      *   FIA STEWARDS: WARNING FOR CAR 5 (BOR) - MOVING UNDER BRAKING (ts)
+     *
+     * ★ `NO FURTHER ACTION` 原来不认识 —— 结果整个周末**最长的两条**仲裁消息
+     *   （7 辆车、8 辆车的事故）一条译文都没有。而那恰恰就是「不予追究」，
+     *   用户明确说过这类不能被忽略。
+     *
+     * ★ 原因不再用括号包起来 —— 原因自己就带括号（未遵守赛会指令（逃生通道）），
+     *   套起来会变成「（未遵守赛会指令（逃生通道））」。改用冒号：「不予追究：原因」。
      */
     private static String stewards(String up) {
         if (up.indexOf("FIA STEWARDS") < 0) {
             return null;
         }
         String who = who(up);
-        String turn = turn(up);
+        String where = where(up);
         String reason = reason(up);
 
         String verdict;
         if (up.indexOf("REVIEWED NO FURTHER") >= 0) {
             verdict = "复核完毕，不予追究";
+        } else if (up.indexOf("NO FURTHER ACTION") >= 0) {
+            verdict = "不予追究";
         } else if (up.indexOf("WILL BE INVESTIGATED AFTER THE SESSION") >= 0) {
             verdict = "赛后调查";
         } else if (up.indexOf("UNDER INVESTIGATION") >= 0) {
@@ -215,13 +242,13 @@ public final class Translator {
         }
 
         StringBuilder b = new StringBuilder("仲裁：");
-        if (turn.length() > 0) {
-            b.append(turn).append(" 号弯 ");
+        if (where.length() > 0) {
+            b.append(where).append(' ');
         }
         b.append(who.length() > 0 ? who : "某车手");
         b.append(" —— ").append(verdict);
         if (reason.length() > 0) {
-            b.append("（").append(reason).append("）");
+            b.append("：").append(reason);
         }
         return b.toString();
     }
@@ -229,20 +256,22 @@ public final class Translator {
     /**
      * 事故已记录（还没判）。真实模板：
      *   TURN 1 INCIDENT INVOLVING CAR 5 (BOR) NOTED - <原因> (ts)
+     *   INCIDENT INVOLVING CAR 41 (LIN) NOTED - UNSAFE RELEASE (ts)     ← 连 TURN 都没有
+     *   FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA), ... NOTED - <原因>
      */
     private static String noted(String up) {
         if (up.indexOf("NOTED") < 0 || up.indexOf("INCIDENT") < 0) {
             return null;
         }
         String who = who(up);
-        String turn = turn(up);
+        String where = where(up);
         String reason = reason(up);
 
         StringBuilder b = new StringBuilder();
-        if (turn.length() > 0) {
-            b.append(turn).append(" 号弯");
-        } else {
-            b.append("赛事");
+        String loc = where.length() > 0 ? where : "赛事";
+        b.append(loc);
+        if (loc.startsWith("Q")) {
+            b.append(' ');          // 「Q1事故」不好看，中英之间留个空格
         }
         b.append("事故");
         if (who.length() > 0) {
@@ -307,6 +336,118 @@ public final class Translator {
         return b.toString();
     }
 
+    /**
+     * 其余「内容型」消息 —— 类型徽标说不清楚的那些。
+     *
+     * ## 为什么单开一类，而不是把旗语也翻了
+     * 判据很简单：**徽标已经表达出来的信息不再重复**。
+     *   `DOUBLE YELLOW IN TRACK SECTOR 15` 徽标就是「双黄旗」，区段是数字看得懂
+     *   -> 不翻（翻了只是把徽标再说一遍）
+     *   `YELLOW IN PIT LANE` 徽标只说「黄旗」，没说是**维修区**的
+     *   -> 要翻（不翻就丢了关键信息）
+     * 所以这里只收「内容型」消息：维修区、会话、天气、赛道状况、车手相关。
+     *
+     * 这些句式来自一个完整比赛周末的 697 条真实消息，一条不编。
+     */
+    private static String other(String up) {
+        if (up.indexOf("PINK HEAD PADDING MATERIAL MUST BE USED") >= 0) {
+            return "必须使用粉色头枕垫料";
+        }
+        if (up.indexOf("TRACK SURFACE SLIPPERY") >= 0) {
+            String sec = sector(up);
+            return "赛道湿滑" + (sec.length() > 0 ? "（" + sec + " 号区段）" : "");
+        }
+        if (up.indexOf("ALL PASS HOLDERS MAY ACCESS THE PIT LANE") >= 0) {
+            return "持通行证者可使用维修区";
+        }
+        if (up.indexOf("YELLOW IN PIT LANE") >= 0) {
+            return "维修区黄旗";
+        }
+        if (up.indexOf("PIT LANE CLEAR") >= 0) {
+            return "维修区解除";
+        }
+        if (up.indexOf("SESSION WILL RESUME") >= 0) {
+            String t = clock(up);
+            return "会话将于 " + (t.length() > 0 ? t : "稍后") + " 恢复";
+        }
+        if (up.indexOf("SESSION WILL BE TEMPORARILY STOPPED") >= 0) {
+            return "会话暂时中止";
+        }
+        if (up.indexOf("MARSHALS ON TRACK") >= 0) {
+            String turn = turn(up);
+            // 「马歇尔」是照字面音译。中文 F1 圈通用的是**马修**（marshal 的定名），
+            // 用户指出过这一点。
+            return (turn.length() > 0 ? turn + " 号弯" : "赛道上") + "有马修";
+        }
+        if (up.indexOf("MEDICAL CAR DEPLOYED") >= 0) {
+            return "医疗车出动";
+        }
+        if (up.indexOf("DELAYED START") >= 0) {
+            return "起步推迟";
+        }
+        if (up.indexOf("PIT EXIT OPEN") >= 0) {
+            return "维修区出口开放";
+        }
+        if (up.indexOf("PIT EXIT CLOSED") >= 0) {
+            return "维修区出口关闭";
+        }
+        if (up.indexOf("OVERTAKE ENABLED") >= 0) {
+            return "允许超车";
+        }
+        if (up.indexOf("OVERTAKE DISABLED") >= 0) {
+            return "禁止超车";
+        }
+        if (up.indexOf("RACE START") >= 0) {
+            return "比赛开始";
+        }
+        if (up.indexOf("FIRST CAR TO TAKE THE FLAG") >= 0) {
+            String who = who(up);
+            return "首个冲线：" + (who.length() > 0 ? who : "某车手");
+        }
+        Matcher m = RAIN.matcher(up);
+        if (m.find()) {
+            return session(m.group(1)) + "降雨概率 " + m.group(2) + "%";
+        }
+        return null;
+    }
+
+    /** `F1 RACE` / `F2 QUALIFYING` / `F1 FREE PRACTICE 2` / `THE F2 SPRINT RACE` -> 中文赛段名。 */
+    static String session(String en) {
+        String s = en.trim().toUpperCase(Locale.US);
+        if (s.startsWith("THE ")) {
+            s = s.substring(4);
+        }
+        String cls;
+        if (s.startsWith("F1")) {
+            cls = "F1 ";
+        } else if (s.startsWith("F2")) {
+            cls = "F2 ";
+        } else if (s.startsWith("F3")) {
+            cls = "F3 ";
+        } else {
+            return en.trim();
+        }
+        String kind;
+        if (s.indexOf("FREE PRACTICE 1") >= 0) {
+            kind = "一练";
+        } else if (s.indexOf("FREE PRACTICE 2") >= 0) {
+            kind = "二练";
+        } else if (s.indexOf("FREE PRACTICE 3") >= 0) {
+            kind = "三练";
+        } else if (s.indexOf("SPRINT QUALIFYING") >= 0) {
+            kind = "冲刺排位";
+        } else if (s.indexOf("SPRINT") >= 0) {
+            kind = "冲刺赛";
+        } else if (s.indexOf("QUALIFYING") >= 0) {
+            kind = "排位赛";
+        } else if (s.indexOf("RACE") >= 0) {
+            kind = "正赛";
+        } else {
+            return en.trim();
+        }
+        return cls + kind;
+    }
+
     // ------------------------------------------------------------------
     // 零件
     // ------------------------------------------------------------------
@@ -322,31 +463,25 @@ public final class Translator {
     private static final java.util.Set<String> NOT_DRIVER = new java.util.HashSet<String>(
             java.util.Arrays.asList("PIT", "LAP", "TBC"));
 
-    /** 从 "CAR 55 (SAI)" 取出「塞恩斯(55)」；多车事故最多列两辆，其余用「等」带过。 */
+    /**
+     * 从 "CAR 55 (SAI)" 取出「塞恩斯(55)」。**一辆都不省。**
+     *
+     * ★ 原来是最多列两辆 + 「等 N 辆」，被用户否掉了：整个周末最长的两条消息
+     *   （8 辆、9 辆车）他一辆都不想漏 —— 车号本身就是要核对的信息。
+     *   列全了译文有 70 来个字、手机上要占三四行，所以列表里同时放开了行数限制
+     *   （见 MainActivity 的 gloss：不再 setMaxLines/ellipsize）。
+     */
     static String who(String up) {
         Matcher m = CAR.matcher(up);
         StringBuilder b = new StringBuilder();
-        int n = 0;
-        boolean more = false;
         while (m.find()) {
             if (NOT_DRIVER.contains(m.group(2))) {
                 continue;               // "(PIT)" 这类尾巴，不是车手
-            }
-            if (n >= 2) {
-                more = true;
-                break;
             }
             if (b.length() > 0) {
                 b.append("、");
             }
             b.append(name(m.group(2))).append("(").append(m.group(1)).append(")");
-            n++;
-        }
-        if (b.length() == 0) {
-            return "";
-        }
-        if (more) {
-            b.append(" 等");
         }
         return b.toString();
     }
@@ -363,6 +498,36 @@ public final class Translator {
 
     static String lap(String up) {
         Matcher m = LAP.matcher(up);
+        return m.find() ? m.group(1) : "";
+    }
+
+    static String sector(String up) {
+        Matcher m = SECTOR.matcher(up);
+        return m.find() ? m.group(1) : "";
+    }
+
+    /**
+     * 事故地点：优先「N 号弯」，没有的话退回排位赛阶段「Q1/Q2/Q3」。
+     *
+     * ★ 原来只会输出「N 号弯」，没有 TURN 就一律写「赛事」——
+     *   于是 `FIA STEWARDS: Q1 INCIDENT ...` 变成了「赛事事故」，
+     *   把"这是排位赛第一节的事故"这个关键上下文丢了。
+     */
+    static String where(String up) {
+        String turn = turn(up);
+        if (turn.length() > 0) {
+            return turn + " 号弯";
+        }
+        Matcher m = PHASE.matcher(up);
+        if (m.find()) {
+            return m.group(1);
+        }
+        return "";
+    }
+
+    /** 消息里的 `17:47` 这种时刻。 */
+    static String clock(String up) {
+        Matcher m = Pattern.compile("\\b(\\d{1,2}:\\d{2})\\b").matcher(up);
         return m.find() ? m.group(1) : "";
     }
 

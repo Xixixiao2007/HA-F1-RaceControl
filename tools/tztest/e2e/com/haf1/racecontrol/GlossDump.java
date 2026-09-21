@@ -14,15 +14,21 @@ import java.util.List;
  * 得拿真句子跑一遍看输出。这个工具就是干这个的，不依赖 Android 设备。
  *
  * 用法：
- *   java ... GlossDump <flag>制表符<category>制表符<message> 的 TSV 文件
+ *   java ... GlossDump &lt;samples.tsv&gt;              逐条详细打印（人看）
+ *   java ... GlossDump &lt;samples.tsv&gt; --compact    一行一条，制表符分隔（喂给脚本）
+ *
+ * compact 模式每行：
+ *   隐藏标记 \t kind \t 类型中文 \t 中文简述（空=没翻出来） \t 原文
+ * 一个周末 700 条，块状格式翻不动，必须一行一条。
  */
 public class GlossDump {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.out.println("用法: GlossDump <samples.tsv>");
+            System.out.println("用法: GlossDump <samples.tsv> [--compact]");
             return;
         }
+        boolean compact = args.length > 1 && "--compact".equals(args[1]);
         List<RaceMessage> list = new ArrayList<RaceMessage>();
         BufferedReader r = new BufferedReader(new InputStreamReader(
                 new FileInputStream(args[0]), "UTF-8"));
@@ -53,6 +59,14 @@ public class GlossDump {
             }
             if (g != null) {
                 glossed++;
+            }
+            if (compact) {
+                System.out.println((noise ? "隐藏" : "显示")
+                        + "\t" + kind
+                        + "\t" + Classifier.label(kind)
+                        + "\t" + (g == null ? "" : g)
+                        + "\t" + m.text());
+                continue;
             }
             System.out.println("--------------------------------------------------------------");
             System.out.println("原文 : " + m.text());

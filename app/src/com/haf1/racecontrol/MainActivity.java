@@ -32,7 +32,7 @@ import java.util.Set;
  * 主页：赛事控制消息流水。
  *
  * 版面自上而下：
- *   1. **标题栏 = 旗语**（整条按当前级别上色：红旗/安全车/VSC/双黄/黄/绿 + 扇区）
+ *   1. **标题栏 = 旗语**（整条按当前级别上色：红旗/安全车/VSC/双黄/黄/绿 + 区段）
  *   2. 状态行（连接方式 / 条数 / 丢号提示 / 过滤开关）
  *   3. 消息列表（新消息闪动 → 定格到等级配色）
  *
@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
 
     /**
      * 标题栏 = 旗语条。整条按当前级别上色（红旗红、双黄黄、绿旗绿…），
-     * 左边是大号旗语，中间是扇区明细，右边是设置键。
+     * 左边是大号旗语，中间是区段明细，右边是设置键。
      *
      * 原来是「实体名占标题栏 + 单独一条 26sp 状态条显示旗语」两行；
      * 用户说「把旗语放到标题栏代替传感器名」，于是合并成一行：
@@ -159,7 +159,7 @@ public class MainActivity extends Activity {
         titleView.setSingleLine(true);
         titleBar.addView(titleView);
 
-        // 扇区明细 / SESSION SUSPENDED 之类的补充说明
+        // 区段明细 / SESSION SUSPENDED 之类的补充说明
         titleDetailView = new TextView(this);
         titleDetailView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         titleDetailView.setTextColor(COLOR_BAR_TEXT);
@@ -867,11 +867,14 @@ public class MainActivity extends Activity {
             textCol.addView(value);
 
             // 中文简述（仲裁/判罚类才有）。原文又长又全是术语，比赛时来不及读。
+            //
+            // **不设 maxLines / ellipsize**：用户要求长句必须显示全 ——
+            // 那两条 8 辆、9 辆车的仲裁消息，译文列全了车号要三四行，
+            // 截断就等于把"到底涉及哪几辆车"又给藏回去了。
+            // 原文（value）仍限 3 行：它是参照物，意思由译文承担。
             gloss = new TextView(MainActivity.this);
             gloss.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             gloss.setTextColor(0xFF00695C);
-            gloss.setMaxLines(2);
-            gloss.setEllipsize(TextUtils.TruncateAt.END);
             gloss.setPadding(0, dp(2), 0, 0);
             gloss.setVisibility(GONE);
             textCol.addView(gloss);

@@ -201,7 +201,7 @@ public class IntegrationTest {
         AlertGate gateB = new AlertGate();
         gateB.dyMinSectors = 3;
         int[] rb = replay(asc, gateB);
-        info("【方案 B：双黄仅 ≥3 扇区】警报 " + rb[0] + " 次");
+        info("【方案 B：双黄仅 ≥3 区段】警报 " + rb[0] + " 次");
 
         System.out.println("   >>> 对照：独立写的 Python 模拟器在同一份数据上算出 21 次/周末");
         System.out.println("   >>> 字面实现（每条双黄都响）是 146 次/周末");

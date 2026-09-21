@@ -311,7 +311,7 @@ SCENARIOS = {
     },
 
     "red_flag": {
-        "desc": "黄旗 → 双黄扩散到 10/11/12 扇区 → 红旗 → 逐扇区清除 → 赛道清空",
+        "desc": "黄旗 → 双黄扩散到 10/11/12 区段 → 红旗 → 逐区段清除 → 赛道清空",
         "interval": 2.0,
         "steps": [
             {"message": "YELLOW IN TRACK SECTOR 9",
@@ -358,7 +358,7 @@ SCENARIOS = {
     },
 
     "vsc": {
-        "desc": "黄旗 22/23 扇区 → VSC 出动 → 马修上赛道 → 清除 → VSC 结束",
+        "desc": "黄旗 22/23 区段 → VSC 出动 → 马修上赛道 → 清除 → VSC 结束",
         "interval": 2.0,
         "steps": [
             {"message": "YELLOW IN TRACK SECTOR 23",
@@ -385,7 +385,7 @@ SCENARIOS = {
     },
 
     "test_double_yellow": {
-        "desc": "双黄扇区 3 → 3 秒后 CLEAR（复现真实的 20:35:56 / 20:35:59 那一对）",
+        "desc": "双黄区段 3 → 3 秒后 CLEAR（复现真实的 20:35:56 / 20:35:59 那一对）",
         "steps": [
             {"message": "DOUBLE YELLOW IN TRACK SECTOR 3",
              "flag": "DOUBLE YELLOW", "category": "Flag", "scope": "Sector", "sector": "3"},
@@ -395,10 +395,16 @@ SCENARIOS = {
     },
 
     "penalty": {
-        "desc": "判罚全链条：事故已记录 → 仲裁复核 → 5 秒罚时 → 罚时执行 → 黑白旗 → 蓝旗"
-                "（这几条都有中文简述，专门用来看翻译）",
+        "desc": "判罚全链条：多车事故（8/9 辆，译文必须列全）→ 事故已记录 → 仲裁复核 → 5 秒罚时"
+                " → 罚时执行 → 黑白旗 → 蓝旗（这几条都有中文简述，专门用来看翻译）",
         "interval": 2.5,
         "steps": [
+            # 整个周末最长的两条。用户要求：车号一个都不能省、译文换行也要显示全。
+            # 放在最前面 —— 展开剧本第一眼就该看到它们够不够长、会不会被截断。
+            {"message": "FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA), 63 (RUS), 3 (VER), 5 (BOR), 27 (HUL), 10 (GAS), 43 (COL), 22 (TSU) AND 77 (BOT) NOTED - FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - MAXIMUM DELTA TIME",
+             "flag": "", "category": "Other"},
+            {"message": "FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA), 63 (RUS), 3 (VER), 27 (HUL), 10 (GAS), 43 (COL), 22 (TSU) AND 77 (BOT) NO FURTHER ACTION - FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - MAXIMUM DELTA TIME",
+             "flag": "", "category": "Other"},
             {"message": "TURN 1 INCIDENT INVOLVING CAR 43 (COL) NOTED - FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – ESCAPE ROAD INSTRUCTIONS (14:27:00)",
              "flag": "", "category": "Other"},
             {"message": "FIA STEWARDS: TURN 3 INCIDENT INVOLVING CARS 43 (COL) AND 87 (BEA) REVIEWED NO FURTHER INVESTIGATION - IMPEDING (14:13:45)",
@@ -411,6 +417,13 @@ SCENARIOS = {
              "flag": "BLACK AND WHITE", "category": "Flag", "scope": "Driver"},
             {"message": "WAVED BLUE FLAG FOR CAR 14 (ALO) TIMED AT 15:42:56",
              "flag": "BLUE", "category": "Flag", "scope": "Driver"},
+            # 内容型消息（徽标说不清楚的那些）也顺手放在这里，一次看完
+            {"message": "MARSHALS ON TRACK AT TURN 20",
+             "flag": "", "category": "Other"},
+            {"message": "YELLOW IN PIT LANE",
+             "flag": "", "category": "Other"},
+            {"message": "SESSION WILL RESUME AT 17:47",
+             "flag": "", "category": "Other"},
         ],
     },
 

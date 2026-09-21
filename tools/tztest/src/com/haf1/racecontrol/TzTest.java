@@ -253,12 +253,12 @@ public class TzTest {
         eq("3 秒就被 CLEAR 的双黄 = 测试型，不升级",
                 Integer.valueOf(g4.onTick(4000000L + 30000L).size()), Integer.valueOf(0));
 
-        section("AlertGate：双黄方案 B（仅 >=3 扇区才升级）");
+        section("AlertGate：双黄方案 B（仅 >=3 区段才升级）");
         AlertGate g5 = new AlertGate();
         g5.dyMinSectors = 3;
         g5.onMessage(mk("DOUBLE YELLOW", "Flag", "12", "DOUBLE YELLOW IN TRACK SECTOR 12"),
                 5000000L);
-        eq("只有 1 个扇区 -> 不升级",
+        eq("只有 1 个区段 -> 不升级",
                 Integer.valueOf(g5.onTick(5000000L + 16000L).size()), Integer.valueOf(0));
 
         AlertGate g6 = new AlertGate();
@@ -269,7 +269,7 @@ public class TzTest {
                 6000500L);
         g6.onMessage(mk("DOUBLE YELLOW", "Flag", "14", "DOUBLE YELLOW IN TRACK SECTOR 14"),
                 6001000L);
-        eq("3 个扇区同时双黄 -> 升级",
+        eq("3 个区段同时双黄 -> 升级",
                 Integer.valueOf(g6.onTick(6000000L + 16000L).size()), Integer.valueOf(1));
 
         section("AlertGate：高状态出现后，等待中的双黄不再有意义");
@@ -324,12 +324,12 @@ public class TzTest {
         TrackState ts2 = new TrackState();
         ts2.onMessage(mk("YELLOW", "Flag", "5", "YELLOW IN TRACK SECTOR 5"));
         ts2.onMessage(mk("DOUBLE YELLOW", "Flag", "4", "DOUBLE YELLOW IN TRACK SECTOR 4"));
-        eq("两个扇区 -> 显示双黄", Integer.valueOf(ts2.level()), Integer.valueOf(TrackState.DY));
-        eq("扇区 4 在双黄列表里",
+        eq("两个区段 -> 显示双黄", Integer.valueOf(ts2.level()), Integer.valueOf(TrackState.DY));
+        eq("区段 4 在双黄列表里",
                 Boolean.valueOf(ts2.doubleYellowSectors().contains(Integer.valueOf(4))),
                 Boolean.TRUE);
         ts2.onMessage(mk("CLEAR", "Flag", "4", "CLEAR IN TRACK SECTOR 4"));
-        eq("清掉双黄扇区后回落到黄",
+        eq("清掉双黄区段后回落到黄",
                 Integer.valueOf(ts2.level()), Integer.valueOf(TrackState.YELLOW));
         ts2.onMessage(new RaceMessage(1L, "TRACK CLEAR", "r", "TRACK CLEAR", "Flag",
                 "CLEAR", "Track", "", "", "", "e", 0));
@@ -394,7 +394,7 @@ public class TzTest {
         eq("蓝旗是噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("BLUE", "Flag", "",
                         "WAVED BLUE FLAG FOR CAR 77 (BOT)"))), Boolean.TRUE);
-        eq("扇区解除是噪音",
+        eq("区段解除是噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "7",
                         "CLEAR IN TRACK SECTOR 7"))), Boolean.TRUE);
         eq("赛道解除是噪音",
@@ -535,7 +535,7 @@ public class TzTest {
         p2.dyEscalateSec = 20;
         AlertGate g10 = new AlertGate();
         p2.applyTo(g10);
-        eq("方案 B 启用扇区阈值 3", Integer.valueOf(g10.dyMinSectors), Integer.valueOf(3));
+        eq("方案 B 启用区段阈值 3", Integer.valueOf(g10.dyMinSectors), Integer.valueOf(3));
         eq("冷却期换算成毫秒", Long.valueOf(g10.cooldownMs), Long.valueOf(30000L));
         eq("升级阈值换算成毫秒", Long.valueOf(g10.dyEscalateMs), Long.valueOf(20000L));
         p2.dyMode = Prefs.DY_OFF;
@@ -563,16 +563,67 @@ public class TzTest {
         eq("复核后不予追究（多车）",
                 Translator.gloss("FIA STEWARDS: TURN 3 INCIDENT INVOLVING CARS 43 (COL)"
                         + " AND 87 (BEA) REVIEWED NO FURTHER INVESTIGATION - IMPEDING (14:13:45)"),
-                "仲裁：3 号弯 科拉平托(43)、比尔曼(87) —— 复核完毕，不予追究（阻挡他人）");
+                "仲裁：3 号弯 科拉平托(43)、比尔曼(87) —— 复核完毕，不予追究：阻挡他人");
         eq("赛后调查",
                 Translator.gloss("FIA STEWARDS: TURN 5 INCIDENT INVOLVING CAR 77 (BOT)"
                         + " WILL BE INVESTIGATED AFTER THE SESSION - FAILING TO FOLLOW"
                         + " RACE DIRECTORS INSTRUCTIONS (13:45:06)"),
-                "仲裁：5 号弯 博塔斯(77) —— 赛后调查（未遵守赛会指令）");
+                "仲裁：5 号弯 博塔斯(77) —— 赛后调查：未遵守赛会指令");
         eq("警告",
                 Translator.gloss("FIA STEWARDS: WARNING FOR CAR 5 (BOR)"
                         + " - MOVING UNDER BRAKING (16:19:05)"),
-                "仲裁：博尔托莱托(5) —— 警告（制动中变线）");
+                "仲裁：博托莱托(5) —— 警告：制动中变线");
+
+        // ★ 回归：整份数据里最长的两条仲裁消息原本**一条译文都没有** ——
+        //   stewards() 只认 "REVIEWED NO FURTHER"，不认 "NO FURTHER ACTION"。
+        //   它们恰恰是「不予追究」，用户明确说过这类不能被忽略。
+        //
+        // ★ 而且**车号一个都不能省**（用户否掉了「等 N 辆」的写法）。
+        //   这两条断言的是完整名单，所以一旦有人重新加上省略号，这里立刻红。
+        eq("NO FURTHER ACTION（8 辆车，全部列出）",
+                Translator.gloss("FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA),"
+                        + " 63 (RUS), 3 (VER), 27 (HUL), 10 (GAS), 43 (COL), 22 (TSU)"
+                        + " AND 77 (BOT) NO FURTHER ACTION - FAILING TO FOLLOW RACE"
+                        + " DIRECTORS INSTRUCTIONS - MAXIMUM DELTA TIME"),
+                "仲裁：Q1 皮亚(81)、拉塞尔(63)、维斯塔潘(3)、霍肯伯格(27)、加斯利(10)、"
+                        + "科拉平托(43)、角田(22)、博塔斯(77) —— 不予追究：未遵守赛会指令（超出最大圈速差）");
+        eq("NOTED（9 辆车，全部列出）",
+                Translator.gloss("FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA),"
+                        + " 63 (RUS), 3 (VER), 5 (BOR), 27 (HUL), 10 (GAS), 43 (COL),"
+                        + " 22 (TSU) AND 77 (BOT) NOTED - FAILING TO FOLLOW RACE DIRECTORS"
+                        + " INSTRUCTIONS - MAXIMUM DELTA TIME"),
+                "Q1 事故（皮亚(81)、拉塞尔(63)、维斯塔潘(3)、博托莱托(5)、霍肯伯格(27)、"
+                        + "加斯利(10)、科拉平托(43)、角田(22)、博塔斯(77)）：已记录 —— "
+                        + "未遵守赛会指令（超出最大圈速差）");
+
+        // ★ 回归：复合原因。连字符后面那半截是对前半截的限定，不能丢。
+        eq("复合原因（- MAXIMUM DELTA TIME）",
+                Translator.gloss("FIA STEWARDS: Q2 INCIDENT INVOLVING CARS 81 (PIA),"
+                        + " 10 (GAS) AND 5 (BOR) NOTED - FAILING TO FOLLOW RACE DIRECTORS"
+                        + " INSTRUCTIONS - MAXIMUM DELTA TIME"),
+                "Q2 事故（皮亚(81)、加斯利(10)、博托莱托(5)）：已记录 —— "
+                        + "未遵守赛会指令（超出最大圈速差）");
+        eq("复合原因（逃生通道）仍走同一条",
+                Translator.gloss("FIA STEWARDS: TURN 5 INCIDENT INVOLVING CAR 77 (BOT)"
+                        + " WILL BE INVESTIGATED AFTER THE SESSION - FAILING TO FOLLOW RACE"
+                        + " DIRECTORS INSTRUCTIONS \u2013 ESCAPE ROAD INSTRUCTIONS (13:45:06)"),
+                "仲裁：5 号弯 博塔斯(77) —— 赛后调查：未遵守赛会指令（逃生通道）");
+
+        // ★ 回归：排位赛阶段。原来一律写成「赛事」，把 Q1/Q2/Q3 的上下文丢了。
+        eq("Q 阶段进事故地点",
+                Translator.gloss("FIA STEWARDS: Q3 INCIDENT INVOLVING CARS 12 (ANT)"
+                        + " AND 16 (LEC) NOTED - FAILING TO FOLLOW RACE DIRECTORS"
+                        + " INSTRUCTIONS - MAXIMUM DELTA TIME"),
+                "Q3 事故（安东内利(12)、勒克莱尔(16)）：已记录 —— 未遵守赛会指令（超出最大圈速差）");
+        eq("没有 TURN 也没有 Q 才写「赛事」",
+                Translator.gloss("INCIDENT INVOLVING CAR 41 (LIN) NOTED - UNSAFE RELEASE (16:55:50)"),
+                "赛事事故（林布拉德(41)）：已记录 —— 不安全放车");
+
+        eq("两辆车照列",
+                Translator.gloss("FIA STEWARDS: TURN 1 INCIDENT INVOLVING CARS 41 (LIN)"
+                        + " AND 27 (HUL) REVIEWED NO FURTHER INVESTIGATION -"
+                        + " FORCING ANOTHER DRIVER OFF THE TRACK (16:35:23)"),
+                "仲裁：1 号弯 林布拉德(41)、霍肯伯格(27) —— 复核完毕，不予追究：把对手逼出赛道");
 
         section("Translator：事故记录 / 黑白旗 / 蓝旗");
         eq("事故已记录（带破折号的那种指令）",
@@ -596,12 +647,45 @@ public class TzTest {
         eq("整圈成绩被删",
                 Translator.gloss("CAR 5 (BOR) LAP DELETED - TRACK LIMITS AT TURN 5"
                         + " LAP 7 13:41:22 (PIT)"),
-                "博尔托莱托(5)：整圈成绩被删 —— 5 号弯超出赛道限制（第 7 圈）");
+                "博托莱托(5)：整圈成绩被删 —— 5 号弯超出赛道限制（第 7 圈）");
+
+        // ★ 内容型消息：徽标说不清楚的那些（维修区 / 会话 / 天气 / 赛道状况）。
+        //   `DOUBLE YELLOW IN TRACK SECTOR 12` 不翻，因为徽标就是「双黄旗」；
+        //   `YELLOW IN PIT LANE` 要翻，因为徽标只说「黄旗」，没说是维修区的。
+        section("Translator：内容型消息（徽标表达不出来的才翻）");
+        eq("维修区黄旗",
+                Translator.gloss("YELLOW IN PIT LANE"), "维修区黄旗");
+        eq("维修区解除",
+                Translator.gloss("PIT LANE CLEAR"), "维修区解除");
+        eq("会话恢复（带时刻）",
+                Translator.gloss("SESSION WILL RESUME AT 17:47"), "会话将于 17:47 恢复");
+        eq("会话中止",
+                Translator.gloss("SESSION WILL BE TEMPORARILY STOPPED"), "会话暂时中止");
+        eq("赛道湿滑（带区段）",
+                Translator.gloss("TRACK SURFACE SLIPPERY IN TRACK SECTOR 26"),
+                "赛道湿滑（26 号区段）");
+        eq("马修在赛道上",
+                Translator.gloss("MARSHALS ON TRACK AT TURN 20"), "20 号弯有马修");
+        eq("医疗车",
+                Translator.gloss("MEDICAL CAR DEPLOYED"), "医疗车出动");
+        eq("首个冲线",
+                Translator.gloss("FIRST CAR TO TAKE THE FLAG - CAR 5 (BOR)"),
+                "首个冲线：博托莱托(5)");
+        eq("降雨概率（赛段名也翻了）",
+                Translator.gloss("RISK OF RAIN FOR F1 FREE PRACTICE 2 IS 0%"),
+                "F1 二练降雨概率 0%");
+        eq("降雨概率（冲刺赛）",
+                Translator.gloss("RISK OF RAIN FOR THE F2 SPRINT RACE IS 0%"),
+                "F2 冲刺赛降雨概率 0%");
+        eq("维修区出口开放（绿旗的补充信息）",
+                Translator.gloss("GREEN LIGHT - PIT EXIT OPEN"), "维修区出口开放");
 
         section("Translator：翻不出来必须返回 null（宁可显示原文，不要瞎猜）");
         eq("红旗没有简述", Translator.gloss("RED FLAG"), null);
         eq("双黄旗没有简述", Translator.gloss("DOUBLE YELLOW IN TRACK SECTOR 12"), null);
-        eq("绿旗没有简述", Translator.gloss("GREEN LIGHT - PIT EXIT OPEN"), null);
+        eq("黄旗没有简述", Translator.gloss("YELLOW IN TRACK SECTOR 12"), null);
+        eq("格子旗没有简述", Translator.gloss("CHEQUERED FLAG"), null);
+        eq("VSC 没有简述", Translator.gloss("VSC DEPLOYED"), null);
         eq("空串返回 null", Translator.gloss(""), null);
         eq("null 返回 null", Translator.gloss(null), null);
         eq("未知车手退回缩写",

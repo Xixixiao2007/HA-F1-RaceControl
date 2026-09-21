@@ -34,7 +34,7 @@ public class TrackState {
 
     /** 全局状态：NONE / GREEN / VSC / SC / RED。 */
     private int global = NONE;
-    /** 扇区级旗语：扇区号 -> YELLOW(2) 或 DY(3)。 */
+    /** 区段级旗语：区段号 -> YELLOW(2) 或 DY(3)。 */
     private final Map<Integer, Integer> sectors = new HashMap<Integer, Integer>();
     private long updatedAt = 0L;
 
@@ -118,7 +118,7 @@ public class TrackState {
         return global;
     }
 
-    /** 当前双黄的扇区列表（已排序）。 */
+    /** 当前双黄的区段列表（已排序）。 */
     public List<Integer> doubleYellowSectors() {
         List<Integer> out = new ArrayList<Integer>();
         for (Map.Entry<Integer, Integer> e : sectors.entrySet()) {
@@ -169,7 +169,7 @@ public class TrackState {
         return "无旗语";
     }
 
-    /** 状态条的补充说明（涉及的扇区）。 */
+    /** 状态条的补充说明（涉及的区段）。 */
     public String detail() {
         int lvl = level();
         if (lvl == NONE || lvl == GREEN) {
@@ -188,7 +188,7 @@ public class TrackState {
         if (list.isEmpty()) {
             return "";
         }
-        StringBuilder sb = new StringBuilder("扇区 ");
+        StringBuilder sb = new StringBuilder("区段 ");
         for (int i = 0; i < list.size() && i < 12; i++) {
             if (i > 0) {
                 sb.append(',');

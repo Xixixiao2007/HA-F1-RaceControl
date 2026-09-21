@@ -18,17 +18,17 @@ import java.util.Map;
  *
  *                                      模型    实现
  *   每条强提醒级消息都响                146     146     <- 字面实现的下场
- *   双黄按「扇区」升级                    29      29
+ *   双黄按「区段」升级                    29      29
  *   双黄按「事故」聚合                    --      23     <- 本类采用的默认（方案 A）
- *   再加"双黄 >=3 扇区"                    8      10     <- 方案 B
+ *   再加"双黄 >=3 区段"                    8      10     <- 方案 B
  *
  * 双黄旗一个周末有 142 条消息，但只对应 24 个真实事件 —— 一次事故会被扩散到
- * 几十个扇区（最极端：52 条消息 / 20 个扇区 / 持续 284 秒）。
+ * 几十个区段（最极端：52 条消息 / 20 个区段 / 持续 284 秒）。
  *
  * 真实数据上的警报构成：3 次红旗 + 1 次 VSC + 19 次双黄事故。
  *
  * ## "测试型双黄"怎么判：靠存活时长，不是靠文本
- * 数据里**没有任何含 "TEST" 的消息**。但把每个扇区双黄从"亮"到"CLEAR"的时长
+ * 数据里**没有任何含 "TEST" 的消息**。但把每个区段双黄从"亮"到"CLEAR"的时长
  * 算出来，分布是双峰的：
  *      0–5 秒    8 次   <- 系统抖动
  *      6–15 秒  21 次   <- 测试或瞬时
@@ -39,7 +39,7 @@ import java.util.Map;
  *
  * ## 因此的判定策略
  * 双黄旗到达时**立刻给轻提醒**（闪动是即时的，无信息损失），同时挂一个定时器；
- * 若 `dyEscalateMs` 之后仍未收到该扇区的 CLEAR，才升级为强提醒。
+ * 若 `dyEscalateMs` 之后仍未收到该区段的 CLEAR，才升级为强提醒。
  * 红旗 / 安全车 / VSC 不受影响，**立刻**强提醒。
  *
  * 本类是纯逻辑（时间由调用方传入），因此可以离线单测。
@@ -71,7 +71,7 @@ public class AlertGate {
     public long dyEscalateMs = 15000L;
     /** 同类型提醒的最小间隔，避免连环炸响。 */
     public long cooldownMs = 60000L;
-    /** 双黄升级所需的最少扇区数。0 = 不启用（方案 A）；3 = 方案 B。 */
+    /** 双黄升级所需的最少区段数。0 = 不启用（方案 A）；3 = 方案 B。 */
     public int dyMinSectors = 0;
     /** 双黄旗提醒总开关。 */
     public boolean dyEnabled = true;
@@ -89,7 +89,7 @@ public class AlertGate {
         boolean escalated;
     }
 
-    /** key = 扇区；等待"是否升级为强提醒"的双黄。 */
+    /** key = 区段；等待"是否升级为强提醒"的双黄。 */
     private final Map<String, Pending> pending = new HashMap<String, Pending>();
     private final Map<String, Long> lastAlertAt = new HashMap<String, Long>();
     private long clusterStart = 0L;
@@ -97,8 +97,8 @@ public class AlertGate {
     /**
      * 本次双黄事故是否已经报过警。
      *
-     * 报警的单位是「一次事故」而不是「一个扇区」：一次大事故会持续几分钟、
-     * 期间不断有新扇区被标双黄，逐扇区升级的话冷却期压不住（冷却 60 秒小于事故时长）。
+     * 报警的单位是「一次事故」而不是「一个区段」：一次大事故会持续几分钟、
+     * 期间不断有新区段被标双黄，逐区段升级的话冷却期压不住（冷却 60 秒小于事故时长）。
      */
     private boolean dyIncidentAlarmed = false;
 
@@ -106,7 +106,7 @@ public class AlertGate {
      * 判定「上一次双黄事故已经过去」的静默间隔（毫秒）。
      *
      * ## 为什么需要它
-     * 只靠「所有扇区都收到 CLEAR」判定事故结束是不够的 —— 实测 141 次双黄里
+     * 只靠「所有区段都收到 CLEAR」判定事故结束是不够的 —— 实测 141 次双黄里
      * 有 **58 次**到会话结束都没等到 CLEAR（会话被中止，或者 CLEAR 压根没发）。
      * 漏一个事故标记就永不复位，**之后所有双黄都不再报警**
      *（实测会掉到 11 次，该报的全都不报了）。
@@ -219,12 +219,12 @@ public class AlertGate {
             return new Action(m, kind, Classifier.ATTENTION, false);
         }
 
-        // ---- CLEAR：取消该扇区的待升级；若它还没升级，说明是测试型 ----
+        // ---- CLEAR：取消该区段的待升级；若它还没升级，说明是测试型 ----
         if (Classifier.K_CLEAR.equals(kind)) {
             if (m.sectorNo() > 0) {
                 pending.remove(sectorKey(m));
             }
-            // 所有扇区都清了 = 这次事故结束，下一次双黄可以重新报警
+            // 所有区段都清了 = 这次事故结束，下一次双黄可以重新报警
             if (pending.isEmpty()) {
                 dyIncidentAlarmed = false;
             }
@@ -262,12 +262,12 @@ public class AlertGate {
                 continue;
             }
             p.escalated = true;         // 只升级一次
-            // 方案 B：要求同一事件里同时有足够多扇区在双黄
+            // 方案 B：要求同一事件里同时有足够多区段在双黄
             if (dyMinSectors > 0 && countSectorsInCluster(p.clusterStart) < dyMinSectors) {
                 continue;
             }
-            // ★ 报警的单位是「一次事故」，不是「一个扇区」。
-            //   一次大事故会持续几分钟、期间不断有新扇区被标双黄。逐扇区升级的话
+            // ★ 报警的单位是「一次事故」，不是「一个区段」。
+            //   一次大事故会持续几分钟、期间不断有新区段被标双黄。逐区段升级的话
             //   冷却期压不住（冷却 60 秒小于事故时长），实测一个周末要响 29 次。
             //   改成事故级之后降到 20 次出头。
             //
@@ -285,7 +285,7 @@ public class AlertGate {
         return out;
     }
 
-    /** 同一事件（时间相近）里当前有多少个扇区处于双黄。 */
+    /** 同一事件（时间相近）里当前有多少个区段处于双黄。 */
     private int countSectorsInCluster(long start) {
         int n = 0;
         for (Pending p : pending.values()) {

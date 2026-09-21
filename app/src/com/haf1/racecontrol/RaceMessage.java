@@ -111,7 +111,7 @@ public class RaceMessage {
         return message.length() > 0 ? message : state;
     }
 
-    /** 扇区号，解析不出来返回 -1。 */
+    /** 区段号，解析不出来返回 -1。 */
     public int sectorNo() {
         if (sector.length() == 0) {
             return -1;
