@@ -1127,6 +1127,18 @@ class Handler(BaseHTTPRequestHandler):
         if not key or version != "13":
             self._json(400, {"message": "Invalid WebSocket handshake."})
             return
+        # ★ 真 HA 的 WS 由 aiohttp 接管，它会把 key 按 base64 解出来，并要求
+        #   **正好 16 字节**，否则回 400 `Handshake error: '<key>'`。
+        #   这里必须一样严 —— 曾经只判「非空」，结果中继把 key 写成
+        #   os.urandom(16).hex()（32 个十六进制字符：本身是合法 base64，解出
+        #   24 字节）时，本地全套测试全绿，一装到 VPS 打真 HA 就 400 拒绝升级。
+        try:
+            _key_raw = base64.b64decode(key.encode("ascii"), validate=True)
+        except Exception:
+            _key_raw = b""
+        if len(_key_raw) != 16:
+            self._json(400, {"message": "Handshake error: '%s'" % key})
+            return
         accept = base64.b64encode(
             hashlib.sha1((key + WS_GUID).encode("ascii")).digest()).decode("ascii")
         resp = ("HTTP/1.1 101 Switching Protocols\r\n"

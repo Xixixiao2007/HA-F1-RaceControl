@@ -26,6 +26,9 @@ tools/tztest/e2e.args
 # GlossDump（翻译诊断）的编译产物 —— 它单独编到一个目录，别跟着 out/ 走
 tools/tztest/glossout/
 tools/tztest/gloss.args
+# Parity（Java vs JS 分类器一致性）的编译产物，同理单独一个目录
+tools/tztest/parityout/
+tools/tztest/parity.args
 # 上次发布的记录（版本号守卫用），是本机状态不该提交
 tools/.release-state.json
 

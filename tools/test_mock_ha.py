@@ -413,6 +413,35 @@ def test_history(base, rows):
 
 def test_websocket_and_scenario(mock, host, port, base):
     print("\n[D] /api/websocket 协议 + vsc 剧本", flush=True)
+
+    # ★ 握手把关：真 HA 的 WS 由 aiohttp 接管，它按 base64 解 Sec-WebSocket-Key
+    #   并要求正好 16 字节，否则 400。中继曾在这里翻车（发的是 32 字符十六进制，
+    #   是合法 base64 但解出 24 字节），而 mock 当时只判「非空」就放行，于是
+    #   「本地全套绿、装到 VPS 打真 HA 立刻 400」。这两条就是那道防线。
+    def raw_handshake(key):
+        s = socket.create_connection((host, port), timeout=10)
+        try:
+            s.sendall((
+                "GET /api/websocket HTTP/1.1\r\nHost: %s:%d\r\n"
+                "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n"
+                % (host, port, key)).encode("ascii"))
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+            return buf.split(b"\r\n", 1)[0].decode("latin1")
+        finally:
+            s.close()
+
+    first = raw_handshake(os.urandom(16).hex())
+    check("D0a 十六进制 key（32 字符）必须被拒 —— 真 HA 也是 400",
+          "400" in first, first)
+    first = raw_handshake(base64.b64encode(os.urandom(16)).decode("ascii"))
+    check("D0b base64(16 字节) key 放行 101", "101" in first, first)
+
     ws = MiniWS(host, port)
     try:
         ok, detail = ws.accept_ok()
