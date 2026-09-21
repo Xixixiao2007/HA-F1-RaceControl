@@ -35,6 +35,7 @@ project_dir 结构:
 """
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -267,6 +268,21 @@ def preflight():
         raise SystemExit(2)
 
 
+def read_manifest_version(manifest):
+    """从 AndroidManifest.xml 读出 versionCode / versionName，仅用于日志核对。
+
+    用正则而不是 XML 解析器：清单结构固定，正则足够，也省掉命名空间处理。
+    """
+    try:
+        with open(manifest, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None, None
+    code = re.search(r'android:versionCode\s*=\s*"([^"]*)"', text)
+    name = re.search(r'android:versionName\s*=\s*"([^"]*)"', text)
+    return (code.group(1) if code else None), (name.group(1) if name else None)
+
+
 def main():
     global JDK, SDK, BUILD_TOOLS, ANDROID_JAR, KEYSTORE
 
@@ -311,8 +327,12 @@ def main():
                 "--manifest", manifest,
                 "-I", ANDROID_JAR,
                 "--min-sdk-version", MIN_SDK,
-                "--target-sdk-version", TARGET_SDK,
-                "--version-code", "1", "--version-name", "1.0"]
+                "--target-sdk-version", TARGET_SDK]
+    # 版本号以 AndroidManifest.xml 为唯一来源：**不传** --version-code /
+    # --version-name。上一代固定传 1 / 1.0，而清单里写的是 5 / 1.4，
+    # 产物里的版本号到底是哪个全看 aapt2 的实现细节 —— 不该留这种不确定性。
+    vcode, vname = read_manifest_version(manifest)
+    log("清单版本: versionCode=%s versionName=%s" % (vcode or "?", vname or "?"))
 
     res_dir = os.path.join(proj, "res")
     if os.path.isdir(res_dir) and collect(res_dir):

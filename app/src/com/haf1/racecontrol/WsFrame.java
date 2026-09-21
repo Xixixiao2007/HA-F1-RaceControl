@@ -1,4 +1,4 @@
-package com.haf1.entitylist;
+package com.haf1.racecontrol;
 
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;

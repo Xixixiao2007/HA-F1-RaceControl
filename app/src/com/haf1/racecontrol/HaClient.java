@@ -1,4 +1,4 @@
-package com.haf1.entitylist;
+package com.haf1.racecontrol;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -155,16 +155,36 @@ public class HaClient {
      * 变更的时间。若不丢，它就会顶着「最新一条变化的时间」再出现一次 —— 这就是同一条
      * 消息显示两遍的原因（实测见 CHANGELOG v1.4）。
      */
-    public static List<Change> fetchHistory(Prefs p, long startMillis, long endMillis)
+    /**
+     * 拉取 [startMillis, endMillis] 区间内该实体的状态变化。
+     *
+     * HA 返回的是「数组的数组」：
+     *   [[ {"state":"...","last_changed":"...","attributes":{...}}, ... ]]
+     *
+     * ## 与上一代的两处关键差别
+     *
+     * 1. **不再带 `minimal_response` / `no_attributes`。**
+     *    上一代只要 (时间, 值)，所以用这两个参数把响应压到最小。但本 App 的旗语分类
+     *    依赖 `flag` / `category` / `sector` 这些属性，而 `minimal_response` 会把
+     *    中间条目的属性全部抹掉（只有首末两条完整）。代价是响应体变大
+     *    （每条还带 history 与 raw_message），所以默认回溯窗口从 24 小时缩到 12 小时。
+     *
+     * 2. **去重键改用 event_id**（见 {@link RaceMessage#key()}）。
+     *
+     * ⚠️ 仍然必须丢掉响应里的首个条目：那是 HA 合成的「期初状态」（该区间开始时仍然
+     * 生效的那个值），它的 last_changed 被设成了**我们请求的起始时刻**，而不是这个状态
+     * 真正变更的时间。若不丢，它就会顶着「最新一条变化的时间」再出现一次 —— 这就是
+     * 同一条消息显示两遍的原因（实测见 CHANGELOG v1.4）。
+     */
+    public static List<RaceMessage> fetchHistory(Prefs p, long startMillis, long endMillis)
             throws HaException {
         String url = p.baseUrl()
                 + "/api/history/period/" + enc(isoLocal(startMillis))
                 + "?filter_entity_id=" + enc(p.entityId.trim())
-                + "&end_time=" + enc(isoLocal(endMillis))
-                + "&minimal_response&no_attributes";
+                + "&end_time=" + enc(isoLocal(endMillis));
 
-        String body = get(url, p.token, 6000, 15000);
-        List<Change> out = new ArrayList<Change>();
+        String body = get(url, p.token, 8000, 25000);
+        List<RaceMessage> out = new ArrayList<RaceMessage>();
         try {
             JSONArray outer = new JSONArray(body);
             if (outer.length() == 0) {
@@ -179,19 +199,17 @@ public class HaClient {
                 if (o == null) {
                     continue;
                 }
-                String ts = o.optString("last_changed", "");
-                String st = o.optString("state", "");
-                if (ts.length() == 0) {
+                RaceMessage m = RaceMessage.parse(o);
+                if (m == null) {
                     continue;
                 }
-                long t = parseIso(ts);
-                if (t <= 0) {
+                if (isSyntheticStartState(i, m.time, startMillis, o.has("entity_id"))) {
                     continue;
                 }
-                if (isSyntheticStartState(i, t, startMillis, o.has("entity_id"))) {
+                if (m.isUnavailable()) {
                     continue;
                 }
-                out.add(new Change(t, st, ts));
+                out.add(m);
             }
         } catch (Exception e) {
             throw new HaException(-2, "返回内容无法解析：" + e.getMessage());

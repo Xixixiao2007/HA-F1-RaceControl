@@ -32,7 +32,21 @@ for _c in (os.path.join(_root, "app"), os.path.join(_root, "apk"),
         break
 if _proj is None:
     _proj = os.path.join(_root, "app")
-APPSRC = os.path.join(_proj, "src", "com", "haf1", "entitylist")
+APPSRC = os.path.join(_proj, "src", "com", "haf1", "racecontrol")
+
+# 参与桌面单测的产品源码：只挑**不依赖 android.* 运行时**的纯逻辑文件。
+# 这不是偷懒 —— UI 与网络那几层本来就该靠真机验证，硬塞进桌面单测只会
+# 逼出一堆假装能用的桩。
+TESTED_SOURCES = (
+    "HaClient.java",      # ISO8601 解析/生成、期初状态判定
+    "Prefs.java",         # 过滤与钳制
+    "RaceMessage.java",   # 解析与去重键
+    "Classifier.java",    # 旗语分类（含两个坑）
+    "AlertGate.java",     # 聚类 / 升级 / 冷却
+    "TrackState.java",    # 优先级状态机
+    "MessageStore.java",  # 去重 / 容量 / 序列化
+    "WsFrame.java",       # RFC6455 帧编解码
+)
 
 
 def collect(root):
@@ -65,7 +79,7 @@ def main():
     sources = []
     sources += collect(os.path.join(T, "stub"))
     sources += collect(os.path.join(T, "src"))
-    for name in ("HaClient.java", "Prefs.java", "Change.java", "WsFrame.java"):
+    for name in TESTED_SOURCES:
         sources.append(os.path.join(APPSRC, name))
 
     argfile = os.path.join(T, "javac.args")
@@ -85,7 +99,7 @@ def main():
 
     print("[test] 运行 TzTest")
     print()
-    p = subprocess.run([java, "-cp", OUT, "com.haf1.entitylist.TzTest"],
+    p = subprocess.run([java, "-cp", OUT, "com.haf1.racecontrol.TzTest"],
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        universal_newlines=True, encoding="utf-8", errors="replace")
     sys.stdout.write(p.stdout)

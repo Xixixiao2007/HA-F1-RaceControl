@@ -17,6 +17,10 @@ public class JSONObject {
         return fallback;
     }
 
+    public int optInt(String name, int fallback) {
+        return fallback;
+    }
+
     public JSONObject optJSONObject(String name) {
         return null;
     }

@@ -1,21 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  HA-F1-RaceControl —— F1 赛事控制消息专用显示 App。
+
+  包名与上一代 Android_HA_Viewer（com.haf1.entitylist）**故意不同**：
+  两个 App 要能同时装在一台手机上，共用同一台 HA 的令牌但互不覆盖。
+
+  targetSdk 保持 23：这台设备是 Android 6.0，且 targetSdk 抬高会带来
+  运行时权限、后台限制、后台启动 Activity 限制等一堆与老设备无关的麻烦。
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.haf1.entitylist"
-    android:versionCode="5"
-    android:versionName="1.4">
+    package="com.haf1.racecontrol"
+    android:versionCode="1"
+    android:versionName="2.0.0">
 
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="23" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 不同旗语给不同震动节奏。没有这个权限 vibrate() 会静默失败。 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
-        android:label="HA Viewer"
+        android:label="F1 Race Control"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
             android:name=".MainActivity"
-            android:label="HA Viewer"
+            android:label="F1 Race Control"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -27,5 +38,24 @@
             android:name=".SettingsActivity"
             android:label="设置"
             android:exported="false" />
+
+        <!--
+          强提醒的全屏横幅。
+          singleTop：连续两条红旗复用同一个页面，不会叠出一堆。
+          excludeFromRecents：它是一次性提醒，不该留在最近任务里。
+          showOnLockScreen：让锁屏上也能看到红旗。
+          注意这里**不能**写 android:turnScreenOn —— 那是 API 27 才有的属性，
+          而我们编译用的平台是 android-23（这台设备是 Android 6.0）。
+          点亮屏幕改在 AlertActivity 里用 FLAG_TURN_SCREEN_ON 窗口标志实现，
+          顺带还省掉了 WAKE_LOCK 权限。
+        -->
+        <activity
+            android:name=".AlertActivity"
+            android:label="强提醒"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:showOnLockScreen="true" />
     </application>
 </manifest>

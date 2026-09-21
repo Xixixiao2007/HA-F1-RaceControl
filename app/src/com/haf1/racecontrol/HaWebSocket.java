@@ -1,4 +1,4 @@
-package com.haf1.entitylist;
+package com.haf1.racecontrol;
 
 import android.util.Base64;
 
@@ -38,8 +38,13 @@ public class HaWebSocket {
         /** 鉴权并订阅成功，实时流已建立。 */
         void onOpen();
 
-        /** 收到该实体的一次状态变化。 */
-        void onState(long time, String state, String raw);
+        /**
+         * 收到该实体的一次状态变化。
+         *
+         * 上一代只回调 (时间, 值, 原始串)。本 App 需要 flag / category / sector
+         * 来做旗语分类，所以直接回调解析好的 {@link RaceMessage}（含全部属性）。
+         */
+        void onState(RaceMessage message);
 
         /** 连接异常（之后会被上层重连）。 */
         void onError(String message);
@@ -307,15 +312,11 @@ public class HaWebSocket {
         if (eid2.length() > 0 && !eid2.equals(targetEntity())) {
             return;
         }
-        String raw = state.optString("last_changed", "");
-        if (raw.length() == 0) {
-            return;
+        RaceMessage msg = RaceMessage.parse(state);
+        if (msg == null) {
+            return;                     // 时间戳解析不出来就当没收到
         }
-        long t = HaClient.parseIso(raw);
-        if (t <= 0) {
-            return;
-        }
-        listener.onState(t, state.optString("state", ""), raw);
+        listener.onState(msg);
     }
 
     private String targetEntity() {
