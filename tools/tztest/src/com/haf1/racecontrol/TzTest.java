@@ -413,18 +413,18 @@ public class TzTest {
         // ================================================================
         // 7) 过滤
         // ================================================================
-        section("Prefs.isNoise：噪音判定（实测隐藏 54.8%、正赛 68.5%）");
+        section("Prefs.isNoise：噪音判定（实测隐藏 253/697 = 36.3%）");
 
-        // ---- 真噪音：只有这三类 ----
+        // ---- 真噪音：只剩「被套圈的蓝旗」这一类 ----
         eq("蓝旗是噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("BLUE", "Flag", "",
                         "WAVED BLUE FLAG FOR CAR 77 (BOT)"))), Boolean.TRUE);
-        eq("区段解除是噪音",
+        eq("★ 区段解除不再算噪音（用户要求：藏掉它黄旗会莫名其妙结束）",
                 Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "7",
-                        "CLEAR IN TRACK SECTOR 7"))), Boolean.TRUE);
-        eq("赛道解除是噪音",
+                        "CLEAR IN TRACK SECTOR 7"))), Boolean.FALSE);
+        eq("★ 赛道解除也不再算噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "",
-                        "TRACK CLEAR"))), Boolean.TRUE);
+                        "TRACK CLEAR"))), Boolean.FALSE);
         eq("删圈速通报是噪音（以 CAR 开头 + 含 DELETED）",
                 Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
                         "CAR 55 (SAI) TIME 1:43.523 DELETED - TRACK LIMITS AT TURN 15"))),
