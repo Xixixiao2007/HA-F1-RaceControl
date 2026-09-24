@@ -14,6 +14,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.view.animation.LinearInterpolator;
 import android.widget.BaseAdapter;
 import android.widget.LinearLayout;
@@ -246,12 +247,28 @@ public class MainActivity extends Activity {
     // 生命周期
     // ------------------------------------------------------------------
 
+    /**
+     * 按设置决定主界面要不要一直亮屏。
+     *
+     * 用窗口标志（FLAG_KEEP_SCREEN_ON）而不是 WakeLock：前者**不需要权限**、
+     * 由窗口系统在界面不可见时自动释放，正是这里要的语义。
+     * onResume 每次都会重新读设置，所以从设置页回来立刻生效、不用重启。
+     */
+    private void applyKeepScreenOn() {
+        if (prefs.keepScreenOn) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         handler.removeCallbacks(pauseStopTask);   // 回来了，取消"宽限期结束就断开"
         prefs = Prefs.load(this);
         prefs.applyTo(gate);
+        applyKeepScreenOn();
 
         String sig = signature(prefs);
         if (lastSignature == null || !sig.equals(lastSignature)) {

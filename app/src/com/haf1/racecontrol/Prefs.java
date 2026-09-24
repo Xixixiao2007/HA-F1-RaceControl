@@ -66,6 +66,16 @@ public class Prefs {
     public boolean attentionEnabled = true;
     /** 新消息是否闪动。 */
     public boolean flashEnabled = true;
+    /**
+     * **主界面**是否一直亮屏（不让系统熄屏）。
+     *
+     * 用窗口标志 FLAG_KEEP_SCREEN_ON 实现，**不需要任何权限**，也不占 WakeLock。
+     * 和 {@link #screenWakeEnabled} 是两条不同的东西：
+     *   · screenWakeEnabled —— **告警横幅**（AlertActivity）弹出时点亮屏幕
+     *   · 这个 —— **消息列表**一直亮着
+     * 默认关：一直亮着费电，要看比赛时再开。
+     */
+    public boolean keepScreenOn = false;
 
     // ---- 过滤 ----
     /** 默认隐藏噪音。只有三类：蓝旗、解除信号、删圈速通报。实测省掉 54.8% 的消息。 */
@@ -103,6 +113,7 @@ public class Prefs {
         p.dyMode = clamp(sp.getInt("dy_mode", DY_ESCALATE), 0, 3);
         p.attentionEnabled = sp.getBoolean("attention", true);
         p.flashEnabled = sp.getBoolean("flash", true);
+        p.keepScreenOn = sp.getBoolean("keepon", false);
 
         p.noiseFilterEnabled = sp.getBoolean("noise", true);
         p.carFilter = sp.getString("car", "");
@@ -132,6 +143,7 @@ public class Prefs {
                 .putInt("dy_mode", dyMode)
                 .putBoolean("attention", attentionEnabled)
                 .putBoolean("flash", flashEnabled)
+                .putBoolean("keepon", keepScreenOn)
                 .putBoolean("noise", noiseFilterEnabled)
                 .putString("car", carFilter)
                 .putString("exclude", joinLines(excludeKeywords))

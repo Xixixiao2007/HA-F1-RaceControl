@@ -41,6 +41,7 @@ public class SettingsActivity extends Activity {
 
     private CheckBox realtimeBox;
     private CheckBox flashBox;
+    private CheckBox keepScreenBox;
     private CheckBox noiseBox;
     private CheckBox soundBox;
     private CheckBox vibrateBox;
@@ -103,6 +104,11 @@ public class SettingsActivity extends Activity {
                 "开启后延迟约 50~150 毫秒；关闭则退回 REST 轮询（约 3.5 秒）。");
         flashBox = check(root, "新消息闪动", p.flashEnabled,
                 "到达的新消息先闪两下再定格配色。历史回填不会闪。");
+        keepScreenBox = check(root, "看消息时不熄屏（一直亮屏）", p.keepScreenOn,
+                "主列表一直亮着，不会自动熄屏。窗口标志实现，不需要额外权限；"
+                        + "费电，要看比赛时再开。（和「提醒」里那条"
+                        + "「超强提醒时点亮屏幕」是两回事：那个是告警横幅，"
+                        + "这个是消息列表。）");
         noiseBox = check(root, "默认隐藏噪音", p.noiseFilterEnabled,
                 "蓝旗 / 解除 / 删圈速通报。实测占全部消息的 54.8%，"
                         + "正赛里占 68.5%。");
@@ -332,6 +338,7 @@ public class SettingsActivity extends Activity {
         p.pollSeconds = Prefs.clampPoll(parse(pollBox.getText().toString(), 2));
         p.realtimeEnabled = realtimeBox.isChecked();
         p.flashEnabled = flashBox.isChecked();
+        p.keepScreenOn = keepScreenBox.isChecked();
         p.noiseFilterEnabled = noiseBox.isChecked();
         p.carFilter = carBox.getText().toString().trim();
         p.excludeKeywords = Prefs.splitLines(excludeBox.getText().toString());
@@ -363,6 +370,7 @@ public class SettingsActivity extends Activity {
         pollBox.setText(String.valueOf(p.pollSeconds));
         realtimeBox.setChecked(p.realtimeEnabled);
         flashBox.setChecked(p.flashEnabled);
+        keepScreenBox.setChecked(p.keepScreenOn);
         noiseBox.setChecked(p.noiseFilterEnabled);
         carBox.setText(p.carFilter);
         excludeBox.setText(Prefs.joinLines(p.excludeKeywords));
