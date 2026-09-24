@@ -43,6 +43,9 @@ public class SettingsActivity extends Activity {
     private CheckBox flashBox;
     private CheckBox keepScreenBox;
     private CheckBox noiseBox;
+    private CheckBox hideBlueBox;
+    private CheckBox hideClearBox;
+    private CheckBox hideDeletedBox;
     private CheckBox soundBox;
     private CheckBox vibrateBox;
     private CheckBox wakeBox;
@@ -109,9 +112,17 @@ public class SettingsActivity extends Activity {
                         + "费电，要看比赛时再开。（和「提醒」里那条"
                         + "「超强提醒时点亮屏幕」是两回事：那个是告警横幅，"
                         + "这个是消息列表。）");
-        noiseBox = check(root, "默认隐藏噪音", p.noiseFilterEnabled,
-                "蓝旗 / 解除 / 删圈速通报。实测占全部消息的 54.8%，"
-                        + "正赛里占 68.5%。");
+        noiseBox = check(root, "默认隐藏噪音（精简）", p.noiseFilterEnabled,
+                "总开关。关掉后下面三项都不生效。实测隐藏 253/697 = 36.3%。");
+        label(root, "精简模式要隐藏哪几类：", null);
+        hideBlueBox = check(root, "隐藏蓝旗", p.noiseHideBlue,
+                "被套圈的蓝旗。量最大 —— 正赛里占 42.9%。");
+        hideClearBox = check(root, "隐藏解除信号（CLEAR / TRACK CLEAR）",
+                p.noiseHideClear,
+                "默认**不隐藏**：藏掉它会让黄旗「莫名其妙就结束」，"
+                        + "看不到是哪个区段被解除。想让精简更狠可以打开。");
+        hideDeletedBox = check(root, "隐藏删圈速通报", p.noiseHideDeleted,
+                "以 CAR 开头且含 DELETED 的那种。");
         carBox = field(root, "只看某辆车（车号）", p.carFilter, "留空 = 不筛选。例如 44。");
         excludeBox = multiline(root, "排除关键词（每行一个）", Prefs.joinLines(p.excludeKeywords),
                 "对消息全文做不区分大小写的子串匹配。");
@@ -340,6 +351,9 @@ public class SettingsActivity extends Activity {
         p.flashEnabled = flashBox.isChecked();
         p.keepScreenOn = keepScreenBox.isChecked();
         p.noiseFilterEnabled = noiseBox.isChecked();
+        p.noiseHideBlue = hideBlueBox.isChecked();
+        p.noiseHideClear = hideClearBox.isChecked();
+        p.noiseHideDeleted = hideDeletedBox.isChecked();
         p.carFilter = carBox.getText().toString().trim();
         p.excludeKeywords = Prefs.splitLines(excludeBox.getText().toString());
 
@@ -372,6 +386,9 @@ public class SettingsActivity extends Activity {
         flashBox.setChecked(p.flashEnabled);
         keepScreenBox.setChecked(p.keepScreenOn);
         noiseBox.setChecked(p.noiseFilterEnabled);
+        hideBlueBox.setChecked(p.noiseHideBlue);
+        hideClearBox.setChecked(p.noiseHideClear);
+        hideDeletedBox.setChecked(p.noiseHideDeleted);
         carBox.setText(p.carFilter);
         excludeBox.setText(Prefs.joinLines(p.excludeKeywords));
         soundBox.setChecked(p.soundEnabled);

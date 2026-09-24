@@ -78,8 +78,18 @@ public class Prefs {
     public boolean keepScreenOn = false;
 
     // ---- 过滤 ----
-    /** 默认隐藏噪音。只有三类：蓝旗、解除信号、删圈速通报。实测省掉 54.8% 的消息。 */
+    /** 「精简」总开关。关掉后下面三项都不生效。 */
     public boolean noiseFilterEnabled = true;
+    /** 「精简」下是否隐藏被套圈的**蓝旗**（量最大）。 */
+    public boolean noiseHideBlue = true;
+    /**
+     * 「精简」下是否隐藏**解除信号**（`CLEAR IN TRACK SECTOR n` / `TRACK CLEAR`）。
+     * 默认**关** —— 藏掉它会让黄旗「莫名其妙就结束」，看不到是哪个区段被解除
+     * （v2.0.6 的决定）。想让精简更狠的人可以自己打开。
+     */
+    public boolean noiseHideClear = false;
+    /** 「精简」下是否隐藏**删圈速通报**（以 `CAR ` 开头且含 `DELETED`）。 */
+    public boolean noiseHideDeleted = true;
     /** 只看某辆车（车号），空 = 不筛。 */
     public String carFilter = "";
     /** 用户自定义排除关键词，每行一个。 */
@@ -116,6 +126,9 @@ public class Prefs {
         p.keepScreenOn = sp.getBoolean("keepon", false);
 
         p.noiseFilterEnabled = sp.getBoolean("noise", true);
+        p.noiseHideBlue = sp.getBoolean("noise_blue", true);
+        p.noiseHideClear = sp.getBoolean("noise_clear", false);
+        p.noiseHideDeleted = sp.getBoolean("noise_deleted", true);
         p.carFilter = sp.getString("car", "");
         p.excludeKeywords = splitLines(sp.getString("exclude", ""));
 
@@ -145,6 +158,9 @@ public class Prefs {
                 .putBoolean("flash", flashEnabled)
                 .putBoolean("keepon", keepScreenOn)
                 .putBoolean("noise", noiseFilterEnabled)
+                .putBoolean("noise_blue", noiseHideBlue)
+                .putBoolean("noise_clear", noiseHideClear)
+                .putBoolean("noise_deleted", noiseHideDeleted)
                 .putString("car", carFilter)
                 .putString("exclude", joinLines(excludeKeywords))
                 .putInt("connwarn", connectionWarnSec)
@@ -225,18 +241,49 @@ public class Prefs {
      * 后两类是用户点名的。它们**今天**本来就没被隐藏，但那是靠数据恰好这么标
      * (`PIT LANE CLEAR` 的 flag 是空串、不是 `CLEAR`) —— 靠运气不算数。
      * 这里显式写死，将来上游怎么改措辞都吞不掉。
+     *
+     * ## v2.0.8：这三类改成用户可勾选（两层设计）
+     * 这个方法是**默认策略**，等于 {@code isNoise(m, DEFAULT_NOISE)}。
+     * 网页版没有那些开关，用的就是这套默认策略 —— 所以
+     * **改了它就必须同步改 `web/classifier.js`**，否则 697 条一致性测试会红。
+     * App 的列表走 {@link #isNoise(RaceMessage, NoiseOpts)}。
      */
     public static boolean isNoise(RaceMessage m) {
+        return isNoise(m, DEFAULT_NOISE);
+    }
+
+    /**
+     * 「精简」要隐藏哪几类 —— 用户在设置页逐项勾选。
+     *
+     * 默认值就是网页版那套：隐藏**蓝旗**和**删圈速通报**，
+     * **不隐藏解除信号**（v2.0.6 起的决定：藏掉 CLEAR 会让黄旗
+     * 「莫名其妙就结束」，看不到是哪个区段被解除）。
+     */
+    public static final class NoiseOpts {
+        /** 隐藏被套圈的蓝旗（量最大）。 */
+        public boolean blue = true;
+        /** 隐藏解除信号（CLEAR / TRACK CLEAR）。默认**不**隐藏。 */
+        public boolean clear = false;
+        /** 隐藏删圈速通报（以 CAR 开头且含 DELETED）。 */
+        public boolean lapDeleted = true;
+    }
+
+    /** 默认策略。★ 改了它就要同步改 `web/classifier.js`。 */
+    public static final NoiseOpts DEFAULT_NOISE = new NoiseOpts();
+
+    /** 按用户勾选的项判噪音。 */
+    public static boolean isNoise(RaceMessage m, NoiseOpts o) {
         if (m == null) {
             return true;
         }
         String kind = Classifier.kind(m);
 
-        // 真噪音只剩这一类：被套圈的蓝旗。
-        // ★ 解除信号（CLEAR）**不再**算噪音 —— 用户明确要求：藏掉它会让黄旗
-        //   「莫名其妙就结束」，看不到是哪个区段、什么时候被解除的。
+        // 用户在设置页勾选的三类（默认：蓝旗隐藏、解除不隐藏、删圈速隐藏）
         if (Classifier.K_BLUE.equals(kind)) {
-            return true;
+            return o.blue;
+        }
+        if (Classifier.K_CLEAR.equals(kind)) {
+            return o.clear;
         }
         // 黑白旗和判罚永远不隐藏
         if (Classifier.K_BW.equals(kind) || Classifier.K_PENALTY.equals(kind)) {
@@ -250,11 +297,20 @@ public class Prefs {
                 || up.indexOf("SESSION") >= 0) {
             return false;
         }
-        // 只有「删圈速通报」这个形状才是噪音
-        if (up.startsWith("CAR ") && up.indexOf("DELETED") >= 0) {
+        // 只有「删圈速通报」这个形状才是噪音（且用户没有关掉这一类）
+        if (o.lapDeleted && up.startsWith("CAR ") && up.indexOf("DELETED") >= 0) {
             return true;
         }
         return false;
+    }
+
+    /** 把用户在设置页勾的三项打包成噪音判定选项。 */
+    public NoiseOpts noiseOpts() {
+        NoiseOpts o = new NoiseOpts();
+        o.blue = noiseHideBlue;
+        o.clear = noiseHideClear;
+        o.lapDeleted = noiseHideDeleted;
+        return o;
     }
 
     /** 这条消息是否应当出现在列表里。 */
@@ -262,7 +318,7 @@ public class Prefs {
         if (m == null) {
             return false;
         }
-        if (noiseFilterEnabled && isNoise(m)) {
+        if (noiseFilterEnabled && isNoise(m, noiseOpts())) {
             return false;
         }
         String car = carFilter == null ? "" : carFilter.trim();

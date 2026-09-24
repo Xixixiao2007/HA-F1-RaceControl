@@ -425,6 +425,64 @@ public class TzTest {
         eq("★ 赛道解除也不再算噪音",
                 Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "",
                         "TRACK CLEAR"))), Boolean.FALSE);
+
+        // ---- v2.0.8：这三类改成用户可勾选 ----
+        section("精简模式：逐项可勾选（v2.0.8）");
+        Prefs.NoiseOpts o = new Prefs.NoiseOpts();
+        String blueMsg = "WAVED BLUE FLAG FOR CAR 77 (BOT)";
+        String clearMsg = "CLEAR IN TRACK SECTOR 7";
+        String deletedMsg = "CAR 55 (SAI) TIME 1:43.523 DELETED - TRACK LIMITS AT TURN 15";
+
+        eq("默认选项：蓝旗隐藏",
+                Boolean.valueOf(Prefs.isNoise(mk("BLUE", "Flag", "", blueMsg), o)),
+                Boolean.TRUE);
+        eq("默认选项：解除信号不隐藏（和 v2.0.6 的决定一致）",
+                Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "7", clearMsg), o)),
+                Boolean.FALSE);
+        eq("默认选项：删圈速通报隐藏",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "", deletedMsg), o)),
+                Boolean.TRUE);
+
+        o.blue = false;
+        eq("关掉「隐藏蓝旗」-> 蓝旗不再隐藏",
+                Boolean.valueOf(Prefs.isNoise(mk("BLUE", "Flag", "", blueMsg), o)),
+                Boolean.FALSE);
+        o.blue = true;
+
+        o.clear = true;
+        eq("打开「隐藏解除信号」-> CLEAR 被隐藏",
+                Boolean.valueOf(Prefs.isNoise(mk("CLEAR", "Flag", "7", clearMsg), o)),
+                Boolean.TRUE);
+        o.clear = false;
+
+        o.lapDeleted = false;
+        eq("关掉「隐藏删圈速」-> 删圈速不再隐藏",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "", deletedMsg), o)),
+                Boolean.FALSE);
+        o.lapDeleted = true;
+
+        // ★ 三类全开，也吞不掉「永不隐藏」的那几类
+        o.blue = true;
+        o.clear = true;
+        o.lapDeleted = true;
+        eq("★ 三类全开也吞不掉黑白旗",
+                Boolean.valueOf(Prefs.isNoise(mk("BLACK AND WHITE", "Flag", "",
+                        "BLACK AND WHITE FLAG FOR CAR 1 (NOR) - FAILING TO FOLLOW"
+                                + " RACE DIRECTORS INSTRUCTIONS"), o)), Boolean.FALSE);
+        eq("★ 三类全开也吞不掉赛会事故记录",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "FIA STEWARDS: TURN 3 INCIDENT INVOLVING CARS 43 (COL)"
+                                + " AND 87 (BEA) NOTED"), o)), Boolean.FALSE);
+        eq("★ 三类全开也吞不掉维修区解除（它的 flag 不是 CLEAR）",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "", "PIT LANE CLEAR"),
+                        o)), Boolean.FALSE);
+        eq("★ 三类全开也吞不掉比赛环节控制",
+                Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
+                        "SESSION WILL RESUME AT 17:47"), o)), Boolean.FALSE);
+        eq("★ 默认策略与显式默认选项必须一致（网页版对齐的就是它）",
+                Boolean.valueOf(Prefs.isNoise(mk("BLUE", "Flag", "", blueMsg))
+                        == Prefs.isNoise(mk("BLUE", "Flag", "", blueMsg),
+                                new Prefs.NoiseOpts())), Boolean.TRUE);
         eq("删圈速通报是噪音（以 CAR 开头 + 含 DELETED）",
                 Boolean.valueOf(Prefs.isNoise(mk("", "Other", "",
                         "CAR 55 (SAI) TIME 1:43.523 DELETED - TRACK LIMITS AT TURN 15"))),
