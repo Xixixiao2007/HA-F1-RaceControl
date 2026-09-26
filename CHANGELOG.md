@@ -1,5 +1,85 @@
 # 更新日志
 
+## v2.0.9
+
+versionCode 9 -> 10。
+
+### 新增：设置页底部显示版本号
+
+「设置 — 关于」里直接显示 `版本 2.0.9（versionCode 10）`。
+
+以前想知道手机装的是哪一版，只能去看下载的 APK 文件名；而文件名是下载时定的，
+装上去的到底是哪一版只有包自己知道。改翻译规则、加功能之后这个信息特别有用。
+
+实现上绕了个坑：这工程**不走 Gradle**，所以没有 `BuildConfig`，版本号只能问
+`PackageManager`；而 `getLongVersionCode()` 是 API 28 才有的方法，这台设备是
+Android 6.0、编译平台是 android-23，所以只能读 `PackageInfo.versionCode` 字段。
+
+### 按 09-24~26 那个比赛周末的真实数据补翻译库
+
+规则一直是从真数据反推的，不是编的。这次把 recorder 里现存的新周末全量抓下来
+（586 条），对着 App 里**真实的** `Translator` 跑了一遍，找出「该有中文简述
+却没有」的 **35 条**，全部补上。
+
+| 缺口 | 条数 | 原文长什么样 |
+| --- | --- | --- |
+| 双黄旗下圈速作废 | 23 | `CAR 77 (BOT) TIME 2:23.403 DELETED - DOUBLE YELLOW AT TURN 7 LAP 6 12:53:52` |
+| 「赛后」再查的仲裁决定 | 4 | `FIA STEWARDS: ... WILL BE INVESTIGATED AFTER THE RACE - YELLOW FLAG INFRINGEMENT` |
+| 安全车 / 排位赛期间的指令 | 8 | `ALL CARS THROUGH THE PIT LANE`、`Q1 WILL START AT 16:04` 等 6 种 |
+
+新译文：
+
+| 原文 | 中文简述 |
+| --- | --- |
+| `... DELETED - DOUBLE YELLOW AT TURN 7 LAP 6 ...` | 博塔斯(77)：单圈成绩被删 —— 7 号弯双黄旗（第 6 圈）|
+| `... WILL BE INVESTIGATED AFTER THE RACE ...` | 仲裁：7 号弯 博托莱托(5) —— 赛后调查：黄旗违规 |
+| `ALL CARS THROUGH THE PIT LANE` | 所有赛车通过维修区 |
+| `ALL CARS USE START/FINISH STRAIGHT` | 所有赛车使用起终点直道 |
+| `RECOVERY VEHICLE ON TRACK AT TURN 6` | 6 号弯有维修车 |
+| `START OF QUALIFYING WILL BE DELAYED` | 排位赛将推迟开始 |
+| `Q1 WILL START AT 16:04` | Q1 将于 16:04 开始 |
+| `LAPPED CARS MAY NOW OVERTAKE THE SAFETY CAR: 77` | 被套圈车可超越安全车：77 号 |
+
+双黄旗那条只陈述事实、不解释为什么删（用户定）：「7 号弯双黄旗」，
+而不是「双黄旗未减速」。
+
+### 修掉几个「看着翻出来了、其实不对」的
+
+- **删圈速只认 `TRACK LIMITS`** —— 双黄旗下的圈速作废用的是
+  `DOUBLE YELLOW`，一个周末 23 条**一条都没翻**。判据改成「`DELETED` + 已知原因」，
+  同时保证 `BLACK AND WHITE FLAG ... - TRACK LIMITS` 不会被误当成删圈速
+  （它含 `TRACK LIMITS`，但那面黑白旗不是删圈速通报）。
+- **`AFTER THE RACE` 不认，只认 `AFTER THE SESSION`** —— 4 条整条
+  翻不出来，而那恰恰是「赛后再查」这种要紧的。
+- 集成自带的 `... - RACE CONTROL TEST` 自测消息**没有车号**，被「无车号的仲裁
+  消息」兜底逻辑接住译成了「某车手」—— 明明一辆车都没提。
+  现在统一显示「赛会判罚测试」。
+- 新出现的复合原因 `FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS –
+  PRACTICE START INFRINGEMENT` 原来只翻到前半截，现在补全成
+  「未遵守赛会指令（起步练习违规）」。
+
+### 网页版同步，一致性测试扩到两个周末
+
+`web/classifier.js` 是 App 的移植，两份必须逐字节一致。这次改动同步过去，
+并且把一致性测试的语料从「一个写死的 697 条」改成**所有**
+`tools/mock_data/racecontrol_history*.tsv`：
+
+```
+语料 racecontrol_history.tsv           （697 条）  Java / JS 逐字节一致
+语料 racecontrol_history_0924_0926.tsv （586 条）  Java / JS 逐字节一致
+```
+
+之所以要改：新规则在旧语料里**一条样本都没有**，分叉了也测不出来。
+
+新周末的真实数据已固化进 `tools/mock_data/racecontrol_history_0924_0926.tsv`。
+
+### 数字（新周末 586 条）
+
+| | 改前 | 改后 |
+| --- | --- | --- |
+| 有中文简述 | 162（27.6%）| **197（33.6%）** |
+| 该翻却没翻 | 35 条 | **0 条** |
+
 ## v2.0.8
 
 versionCode 8 → 9。

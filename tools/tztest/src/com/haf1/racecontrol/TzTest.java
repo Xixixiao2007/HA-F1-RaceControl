@@ -722,7 +722,7 @@ public class TzTest {
                 Translator.gloss("WAVED BLUE FLAG FOR CAR 14 (ALO) TIMED AT 15:42:56"),
                 "蓝旗（让车）：阿隆索(14)");
 
-        section("Translator：超赛道限制删圈速");
+        section("Translator：删圈速（判据是 DELETED + 已知原因）");
         eq("单圈成绩被删",
                 Translator.gloss("CAR 12 (ANT) TIME 1:57.307 DELETED - TRACK LIMITS"
                         + " AT TURN 18 LAP 3 13:34:28"),
@@ -731,6 +731,75 @@ public class TzTest {
                 Translator.gloss("CAR 5 (BOR) LAP DELETED - TRACK LIMITS AT TURN 5"
                         + " LAP 7 13:41:22 (PIT)"),
                 "博托莱托(5)：整圈成绩被删 —— 5 号弯超出赛道限制（第 7 圈）");
+
+        section("Translator：删圈速的两种原因（v2.0.9 补）");
+        eq("单圈成绩被删（双黄旗）",
+                Translator.gloss("CAR 77 (BOT) TIME 2:23.403 DELETED - DOUBLE YELLOW"
+                        + " AT TURN 7 LAP 6 12:53:52"),
+                "博塔斯(77)：单圈成绩被删 —— 7 号弯双黄旗（第 6 圈）");
+        eq("整圈成绩被删（双黄旗）",
+                Translator.gloss("CAR 23 (ALB) LAP DELETED - DOUBLE YELLOW AT TURN 7"
+                        + " LAP 13 12:53:58 (PIT)"),
+                "阿尔本(23)：整圈成绩被删 —— 7 号弯双黄旗（第 13 圈）");
+        // 判据是「DELETED + 已知原因」，不能只看原因：
+        // 黑白旗正文里也含 TRACK LIMITS，但它不是删圈速通报。
+        eq("含 TRACK LIMITS 的黑白旗不能被当成删圈速",
+                Translator.gloss("BLACK AND WHITE FLAG FOR CAR 44 (HAM) - TRACK LIMITS"),
+                "黑白旗警告：汉密尔顿(44) —— 超出赛道限制");
+        eq("含 DELETED 但原因未知 -> 仍然不翻",
+                Translator.gloss("CAR 5 (BOR) TIME 1:40.000 DELETED - SOMETHING NEW"),
+                null);
+
+        section("Translator：赛后再查 / 起步练习违规（v2.0.9 补）");
+        eq("AFTER THE RACE 也要认（原来整条不翻）",
+                Translator.gloss("FIA STEWARDS: TURN 7 INCIDENT INVOLVING CAR 5 (BOR)"
+                        + " WILL BE INVESTIGATED AFTER THE RACE - YELLOW FLAG"
+                        + " INFRINGEMENT (16:12:10)"),
+                "仲裁：7 号弯 博托莱托(5) —— 赛后调查：黄旗违规");
+        eq("AFTER THE SESSION 仍然认",
+                Translator.gloss("FIA STEWARDS: TURN 7 INCIDENT INVOLVING CAR 77 (BOT)"
+                        + " WILL BE INVESTIGATED AFTER THE SESSION - YELLOW FLAG"
+                        + " INFRINGEMENT (13:02:16)"),
+                "仲裁：7 号弯 博塔斯(77) —— 赛后调查：黄旗违规");
+        eq("复合原因的后半截不能丢",
+                Translator.gloss("INCIDENT INVOLVING CAR 6 (HAD) NOTED - FAILING TO"
+                        + " FOLLOW RACE DIRECTORS INSTRUCTIONS – PRACTICE"
+                        + " START INFRINGEMENT (14:20:31)"),
+                "赛事事故（哈贾尔(6)）：已记录 —— 未遵守赛会指令（起步练习违规）");
+
+        section("Translator：安全车 / 排位赛期间的操作指令（v2.0.9 补）");
+        eq("所有赛车通过维修区",
+                Translator.gloss("ALL CARS THROUGH THE PIT LANE"),
+                "所有赛车通过维修区");
+        eq("所有赛车使用起终点直道",
+                Translator.gloss("ALL CARS USE START/FINISH STRAIGHT"),
+                "所有赛车使用起终点直道");
+        eq("维修车（不是「救援车」）",
+                Translator.gloss("RECOVERY VEHICLE ON TRACK AT TURN 6"),
+                "6 号弯有维修车");
+        eq("排位赛推迟开始",
+                Translator.gloss("START OF QUALIFYING WILL BE DELAYED"),
+                "排位赛将推迟开始");
+        eq("Q1 开始时刻",
+                Translator.gloss("Q1 WILL START AT 16:04"), "Q1 将于 16:04 开始");
+        eq("被套圈车可超越安全车（冒号后是车号）",
+                Translator.gloss("LAPPED CARS MAY NOW OVERTAKE THE SAFETY CAR: 77"),
+                "被套圈车可超越安全车：77 号");
+
+        // 集成自带的自测消息没有车号，原来落到兜底变成「某车手」——
+        // 明明一辆车都没提。用户定的译法：统一标成「赛会判罚测试」。
+        section("Translator：集成的自测消息不许冒充「某车手」（v2.0.9 补）");
+        eq("RACE CONTROL TEST（已记录）",
+                Translator.gloss("INCIDENT INVOLVING ALL CARS NOTED - RACE CONTROL TEST"),
+                "赛会判罚测试");
+        eq("RACE CONTROL TEST（调查中）",
+                Translator.gloss("FIA STEWARDS: INCIDENT INVOLVING ALL CARS"
+                        + " UNDER INVESTIGATION - RACE CONTROL TEST"),
+                "赛会判罚测试");
+        eq("RACE CONTROL TEST（不予追究）",
+                Translator.gloss("FIA STEWARDS: INCIDENT INVOLVING ALL CARS"
+                        + " NO FURTHER ACTION - RACE CONTROL TEST"),
+                "赛会判罚测试");
 
         // ★ 内容型消息：徽标说不清楚的那些（维修区 / 比赛环节 / 天气 / 赛道状况）。
         //   `DOUBLE YELLOW IN TRACK SECTOR 12` 不翻，因为徽标就是「双黄旗」；

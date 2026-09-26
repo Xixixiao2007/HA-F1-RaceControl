@@ -1,6 +1,7 @@
 package com.haf1.racecontrol;
 
 import android.app.Activity;
+import android.content.pm.PackageInfo;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -248,6 +249,17 @@ public class SettingsActivity extends Activity {
         });
         root.addView(defaults);
 
+        // ----------------------------------------------------------
+        // 关于
+        // ----------------------------------------------------------
+        // 用户要的：设置页里能直接看出手机装的是哪一版。
+        // 这比「看 APK 文件名」可靠 —— 文件名是下载时定的，
+        // 装上去的到底是哪一版，只有包自己知道。
+        header(root, "关于");
+        label(root, versionText(),
+                "装机核对用。APK 每构建一次 versionCode 就 +1，"
+                        + "同一个版本号不会对应两个不同的包。");
+
         scroll.addView(root);
         setContentView(scroll);
     }
@@ -324,6 +336,27 @@ public class SettingsActivity extends Activity {
             h.setTextColor(0xFF90A4AE);
             h.setPadding(0, 0, 0, dp(2));
             root.addView(h);
+        }
+    }
+
+    /**
+     * 「版本 2.0.9（versionCode 10）」。
+     *
+     * ⚠️ 不能用 BuildConfig.VERSION_NAME —— 这工程不走 Gradle，没有 BuildConfig。
+     * ⚠️ 也不能用 PackageInfo.getLongVersionCode() —— 那是 API 28 才有的方法，
+     *    而这台设备是 Android 6.0、编译平台是 android-23，只能读 versionCode 字段。
+     *
+     * 外面套 try 不是洁癖：PackageManager 这个方法名义上会抛
+     * NameNotFoundException，读自己的包名当然不会，
+     * 但设置页没必要为这种理论情况崩掉。
+     */
+    private String versionText() {
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return "版本 " + info.versionName
+                    + "（versionCode " + info.versionCode + "）";
+        } catch (Exception e) {
+            return "版本信息读取失败：" + e.getClass().getSimpleName();
         }
     }
 

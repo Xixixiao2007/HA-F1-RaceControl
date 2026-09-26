@@ -27,6 +27,11 @@ import java.util.regex.Pattern;
  *   黑白旗              5 条
  *   明确判罚            3 条
  *
+ * 第二个周末（2026-09-24~26，586 条）又暴露了几个缺口，已补上：
+ *   删圈速的第二种原因 DOUBLE YELLOW     23 条
+ *   `AFTER THE RACE` 的仲裁决定           4 条
+ *   安全车 / 排位赛期间的操作指令        6 种 / 8 条
+ *
  * 翻不出来就返回 null —— **宁可显示原文，也不要瞎猜**。
  *
  * 纯函数、不碰 Android API，所以能离线单测。
@@ -52,6 +57,8 @@ public final class Translator {
     /** 排位赛阶段。真实数据里有 `FIA STEWARDS: Q1 INCIDENT INVOLVING CARS 81 (PIA), ...` —— */
     private static final Pattern PHASE = Pattern.compile("\\b(Q[123])\\b");
     private static final Pattern RAIN = Pattern.compile("RISK OF RAIN FOR (.+?) IS (\\d+)%");
+    /** `Q1 WILL START AT 16:04` / `Q2 ...` / `Q3 ...`。 */
+    private static final Pattern WILL_START = Pattern.compile("\\b(Q[123])\\b WILL START AT (\\d{1,2}:\\d{2})");
 
     /** 三位缩写 -> 中文姓氏。用数据里实际出现过的车手，查不到就退回缩写。 */
     private static final Map<String, String> DRIVERS = new HashMap<String, String>();
@@ -105,6 +112,8 @@ public final class Translator {
             {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - ESCAPE ROAD INSTRUCTIONS", "未遵守赛会指令（逃生通道）"},
             {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – MAXIMUM DELTA TIME", "未遵守赛会指令（超出最大圈速差）"},
             {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - MAXIMUM DELTA TIME", "未遵守赛会指令（超出最大圈速差）"},
+            {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS – PRACTICE START INFRINGEMENT", "未遵守赛会指令（起步练习违规）"},
+            {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS - PRACTICE START INFRINGEMENT", "未遵守赛会指令（起步练习违规）"},
             {"FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS", "未遵守赛会指令"},
             {"LEAVING THE TRACK AND GAINING AN ADVANTAGE", "离开赛道并获得优势"},
             {"FORCING ANOTHER DRIVER OFF THE TRACK", "把对手逼出赛道"},
@@ -120,6 +129,18 @@ public final class Translator {
     };
 
     /**
+     * 删圈速的原因。加了双黄旗后不再是单一条件，所以单独列表。
+     *
+     * ★ 双黄旗版本原来一条都翻不出来：判据写死了 `TRACK LIMITS`，
+     *   而双黄旗下圈速作废用的是 `DOUBLE YELLOW`。
+     *   2026-09-24~26 那个周末 23 条，占删圈速通报的两成。
+     */
+    private static final String[][] DELETE_REASONS = {
+            {"TRACK LIMITS", "超出赛道限制"},
+            {"DOUBLE YELLOW", "双黄旗"},
+    };
+
+    /**
      * 翻成中文简述。翻不出来返回 null（调用方应显示原文）。
      */
     public static String gloss(String text) {
@@ -131,6 +152,13 @@ public final class Translator {
             return null;
         }
         String up = raw.toUpperCase(Locale.US);
+
+        // 集成自带的自测消息：`... - RACE CONTROL TEST`。
+        // 它没有车号，落到下面的兜底会变成「某车手」—— 明明没有车手。
+        // 统一标成测试（用户定的译法）。
+        if (up.indexOf("RACE CONTROL TEST") >= 0) {
+            return "赛会判罚测试";
+        }
 
         String g = penalty(up);
         if (g != null) {
@@ -144,7 +172,7 @@ public final class Translator {
         if (g != null) {
             return g;
         }
-        g = trackLimits(up);
+        g = lapDeleted(up);
         if (g != null) {
             return g;
         }
@@ -229,7 +257,10 @@ public final class Translator {
             verdict = "复核完毕，不予追究";
         } else if (up.indexOf("NO FURTHER ACTION") >= 0) {
             verdict = "不予追究";
-        } else if (up.indexOf("WILL BE INVESTIGATED AFTER THE SESSION") >= 0) {
+        } else if (up.indexOf("WILL BE INVESTIGATED AFTER THE SESSION") >= 0
+                || up.indexOf("WILL BE INVESTIGATED AFTER THE RACE") >= 0) {
+            // ★ 只认 SESSION 不认 RACE，结果新周末 4 条「赛后再查」整条翻不出来。
+            //   `... WILL BE INVESTIGATED AFTER THE RACE - YELLOW FLAG INFRINGEMENT`
             verdict = "赛后调查";
         } else if (up.indexOf("UNDER INVESTIGATION") >= 0) {
             verdict = "调查中";
@@ -285,12 +316,30 @@ public final class Translator {
     }
 
     /**
-     * 超出赛道限制删圈速。真实模板：
+     * 删圈速。真实模板（**两种原因**）：
      *   CAR 55 (SAI) TIME 1:43.523 DELETED - TRACK LIMITS AT TURN 15 LAP 26 15:48:45
+     *   CAR 77 (BOT) TIME 2:23.403 DELETED - DOUBLE YELLOW AT TURN 7 LAP 6 12:53:52
      *   CAR 1 (NOR) LAP DELETED - TRACK LIMITS AT TURN 1 LAP 28 14:34:00 (PIT)
+     *
+     * 判据必须是「DELETED + 已知原因」，**不能只看原因**：
+     *   `BLACK AND WHITE FLAG FOR CAR 44 (HAM) - TRACK LIMITS`
+     *   也含 TRACK LIMITS，但那是黑白旗，不是删圈速。
+     *
+     * 双黄旗那条只陈述事实、不解释为什么删（用户定）：
+     *   「7 号弯双黄旗」，而不是「双黄旗未减速」。
      */
-    private static String trackLimits(String up) {
-        if (up.indexOf("TRACK LIMITS") < 0 || up.indexOf("DELETED") < 0) {
+    private static String lapDeleted(String up) {
+        if (up.indexOf("DELETED") < 0) {
+            return null;
+        }
+        String why = "";
+        for (int i = 0; i < DELETE_REASONS.length; i++) {
+            if (up.indexOf(DELETE_REASONS[i][0]) >= 0) {
+                why = DELETE_REASONS[i][1];
+                break;
+            }
+        }
+        if (why.length() == 0) {
             return null;
         }
         String who = who(up);
@@ -302,9 +351,9 @@ public final class Translator {
         b.append(who.length() > 0 ? who : "某车手");
         b.append(wholeLap ? "：整圈成绩被删" : "：单圈成绩被删");
         if (turn.length() > 0) {
-            b.append(" —— ").append(turn).append(" 号弯超出赛道限制");
+            b.append(" —— ").append(turn).append(" 号弯").append(why);
         } else {
-            b.append(" —— 超出赛道限制");
+            b.append(" —— ").append(why);
         }
         if (lap.length() > 0) {
             b.append("（第 ").append(lap).append(" 圈）");
@@ -350,6 +399,32 @@ public final class Translator {
      * 这些句式来自一个完整比赛周末的 697 条真实消息，一条不编。
      */
     private static String other(String up) {
+        // ---- 2026-09-24~26 新周末出现的指令 ----
+        // 这五条都是安全车 / 排位赛期间的操作指令，徽标只能说「其它」。
+        if (up.indexOf("ALL CARS THROUGH THE PIT LANE") >= 0) {
+            return "所有赛车通过维修区";
+        }
+        if (up.indexOf("ALL CARS USE START/FINISH STRAIGHT") >= 0) {
+            return "所有赛车使用起终点直道";
+        }
+        if (up.indexOf("RECOVERY VEHICLE ON TRACK") >= 0) {
+            // 用户定的译法：维修车（不是「救援车」）
+            String t = turn(up);
+            return (t.length() > 0 ? t + " 号弯" : "赛道") + "有维修车";
+        }
+        if (up.indexOf("START OF QUALIFYING WILL BE DELAYED") >= 0) {
+            return "排位赛将推迟开始";
+        }
+        Matcher ws = WILL_START.matcher(up);
+        if (ws.find()) {
+            return ws.group(1) + " 将于 " + ws.group(2) + " 开始";
+        }
+        if (up.indexOf("LAPPED CARS MAY NOW OVERTAKE THE SAFETY CAR") >= 0) {
+            // 冒号后面是车号（用户确认）。
+            String n = afterColon(up);
+            return "被套圈车可超越安全车"
+                    + (n.length() > 0 ? "：" + n + " 号" : "");
+        }
         if (up.indexOf("PINK HEAD PADDING MATERIAL MUST BE USED") >= 0) {
             return "必须使用粉色头枕垫料";
         }
@@ -525,6 +600,12 @@ public final class Translator {
             return m.group(1);
         }
         return "";
+    }
+
+    /** 冒号后面那串数字：`... SAFETY CAR: 77` -> "77"。 */
+    static String afterColon(String up) {
+        Matcher m = Pattern.compile(":\\s*(\\d+)").matcher(up);
+        return m.find() ? m.group(1) : "";
     }
 
     /** 消息里的 `17:47` 这种时刻。 */
